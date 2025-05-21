@@ -14,7 +14,6 @@ import { Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Product, ProductCategory, UnitOfMeasure, PriceTier } from '@/types';
 import { productCategories, unitsOfMeasure, priceLevelOptions } from '@/types';
-import { uploadFileToFirebase } from '@/lib/storageUtils';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
