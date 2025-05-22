@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation'; // Import useRouter from next/navigation
-import ProductForm from './new/ProductForm'; // Import ProductForm correctly
+import ProductForm from '../new/ProductForm'; // Import ProductForm correctly
 import { Product } from '@/types'; // Ensure this matches your type definition
 
 export default function NewProductPage() {
