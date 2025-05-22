@@ -5,7 +5,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
-import ProductForm from '../../product/ProductForm';
+import ProductForm from '../../products/ProductForm';
 import type { Product } from '@/types';
 
 export default function NewProductPage() {
