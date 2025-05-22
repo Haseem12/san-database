@@ -1,23 +1,18 @@
 "use client";
 
-import React, { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation'; // Import useRouter from next/navigation
-import ProductForm from '../new/ProductForm'; // Import ProductForm correctly
+import ProductForm from '../ProductForm'; // Correct import path based on the folder structure
 import { Product } from '@/types'; // Ensure this matches your type definition
 
 export default function NewProductPage() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const router = useRouter(); // Initialize useRouter
 
   const handleSaveNewProduct = (product: Product) => {
-    // Logic to handle the new product (could be state update or other actions)
     console.log("New product added:", product);
-
-    // After adding the product, redirect to the products page
     router.push('/products'); // Redirect to /products page
   };
 
@@ -35,10 +30,7 @@ export default function NewProductPage() {
         </h1>
       </header>
 
-      {error && <div className="text-red-500">{error}</div>} {/* Display error if any */}
-
-      {/* Pass handleSaveNewProduct to ProductForm */}
-      <ProductForm onSave={handleSaveNewProduct} isLoading={isLoading} />
+      <ProductForm onSave={handleSaveNewProduct} />
     </div>
   );
 }
