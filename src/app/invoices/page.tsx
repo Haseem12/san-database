@@ -202,6 +202,288 @@ export default function InvoicesPage() {
     })
   }
 
+  const handlePrintInvoice = (invoice: Invoice) => {
+    // Create a new window for printing
+    const printWindow = window.open("", "_blank", "width=800,height=600")
+
+    if (!printWindow) {
+      toast({
+        title: "Print Failed",
+        description: "Please allow popups to print invoices.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const printContent = generatePrintableInvoice(invoice)
+
+    printWindow.document.write(printContent)
+    printWindow.document.close()
+
+    // Wait for content to load then print
+    printWindow.onload = () => {
+      printWindow.print()
+      printWindow.close()
+    }
+  }
+
+  const generatePrintableInvoice = (invoice: Invoice): string => {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Invoice ${invoice.invoiceNumber}</title>
+        <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          
+          body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 40px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 20px;
+          }
+          
+          .company-info h1 {
+            color: #2563eb;
+            font-size: 28px;
+            margin-bottom: 5px;
+          }
+          
+          .company-info p {
+            color: #666;
+            margin: 2px 0;
+          }
+          
+          .invoice-info {
+            text-align: right;
+          }
+          
+          .invoice-info h2 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 10px;
+          }
+          
+          .invoice-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-bottom: 40px;
+          }
+          
+          .bill-to, .invoice-meta {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+          }
+          
+          .bill-to h3, .invoice-meta h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+          }
+          
+          .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+          }
+          
+          .items-table th,
+          .items-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+          }
+          
+          .items-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+          }
+          
+          .items-table .text-right {
+            text-align: right;
+          }
+          
+          .totals {
+            margin-left: auto;
+            width: 300px;
+          }
+          
+          .totals-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+          }
+          
+          .totals-row.total {
+            font-weight: bold;
+            font-size: 18px;
+            border-bottom: 2px solid #333;
+            margin-top: 10px;
+          }
+          
+          .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+          }
+          
+          .status-paid { background: #dcfce7; color: #166534; }
+          .status-sent { background: #f1f5f9; color: #475569; }
+          .status-draft { background: #f9fafb; color: #374151; border: 1px solid #d1d5db; }
+          .status-overdue { background: #fef2f2; color: #dc2626; }
+          .status-cancelled { background: #fef2f2; color: #dc2626; }
+          
+          .notes {
+            margin-top: 40px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+          }
+          
+          .notes h3 {
+            margin-bottom: 10px;
+            color: #333;
+          }
+          
+          @media print {
+            body {
+              padding: 0;
+            }
+            
+            .header {
+              page-break-inside: avoid;
+            }
+            
+            .items-table {
+              page-break-inside: auto;
+            }
+            
+            .items-table tr {
+              page-break-inside: avoid;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="company-info">
+            <h1>SAJ Foods</h1>
+            <p>Your Company Address</p>
+            <p>City, State, ZIP Code</p>
+            <p>Phone: (123) 456-7890</p>
+            <p>Email: info@sajfoods.net</p>
+          </div>
+          <div class="invoice-info">
+            <h2>INVOICE</h2>
+            <p><strong>Invoice #:</strong> ${invoice.invoiceNumber}</p>
+            <p><strong>Status:</strong> <span class="status-badge status-${invoice.status.toLowerCase()}">${invoice.status}</span></p>
+          </div>
+        </div>
+        
+        <div class="invoice-details">
+          <div class="bill-to">
+            <h3>Bill To</h3>
+            <p><strong>${invoice.customer.name}</strong></p>
+            ${invoice.customer.email ? `<p>${invoice.customer.email}</p>` : ""}
+            ${invoice.customer.address ? `<p>${invoice.customer.address}</p>` : ""}
+            ${invoice.customer.phone ? `<p>${invoice.customer.phone}</p>` : ""}
+          </div>
+          
+          <div class="invoice-meta">
+            <h3>Invoice Details</h3>
+            <p><strong>Issue Date:</strong> ${formatDate(invoice.issueDate)}</p>
+            <p><strong>Due Date:</strong> ${formatDate(invoice.dueDate)}</p>
+            <p><strong>Payment Terms:</strong> Net 30</p>
+          </div>
+        </div>
+        
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th class="text-right">Qty</th>
+              <th class="text-right">Unit Price</th>
+              <th class="text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              invoice.items
+                ?.map(
+                  (item) => `
+              <tr>
+                <td>${item.description}</td>
+                <td class="text-right">${item.quantity}</td>
+                <td class="text-right">${formatCurrency(item.unitPrice)}</td>
+                <td class="text-right">${formatCurrency(item.total)}</td>
+              </tr>
+            `,
+                )
+                .join("") || '<tr><td colspan="4">No items found</td></tr>'
+            }
+          </tbody>
+        </table>
+        
+        <div class="totals">
+          <div class="totals-row">
+            <span>Subtotal:</span>
+            <span>${formatCurrency(invoice.subtotal || 0)}</span>
+          </div>
+          <div class="totals-row">
+            <span>Tax:</span>
+            <span>${formatCurrency(invoice.tax || 0)}</span>
+          </div>
+          <div class="totals-row total">
+            <span>Total:</span>
+            <span>${formatCurrency(invoice.totalAmount)}</span>
+          </div>
+        </div>
+        
+        ${
+          invoice.notes
+            ? `
+          <div class="notes">
+            <h3>Notes</h3>
+            <p>${invoice.notes}</p>
+          </div>
+        `
+            : ""
+        }
+        
+        <div style="margin-top: 40px; text-align: center; color: #666; font-size: 12px;">
+          <p>Thank you for your business!</p>
+        </div>
+      </body>
+      </html>
+    `
+  }
+
   const formatDate = (date: Date | string | null | undefined): string => {
     if (!date) return "N/A"
 
@@ -314,7 +596,7 @@ export default function InvoicesPage() {
                           <DropdownMenuItem>
                             <Send className="mr-2 h-4 w-4" /> Send Invoice
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handlePrintInvoice(invoice)}>
                             <Printer className="mr-2 h-4 w-4" /> Print Invoice
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
