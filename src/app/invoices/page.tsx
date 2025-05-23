@@ -393,10 +393,10 @@ export default function InvoicesPage() {
       <body>
         <div class="header">
           <div class="company-info">
-            <h1>SAJ Foods</h1>
-            <p>Your Company Address</p>
-            <p>City, State, ZIP Code</p>
-            <p>Phone: (123) 456-7890</p>
+            <h1>SAJ Foods Limited</h1>
+            <p>KM 142 Kano-Kaduna Expressway, Maraban Gwanda, </p>
+            <p>Sabon Gari, Zaria, Kaduna State, Nigeria Postal Code: 810106</p>
+            <p>Phone: (123) 817-0707020, (123) 8076-545454</p>
             <p>Email: info@sajfoods.net</p>
           </div>
           <div class="invoice-info">
