@@ -1,3 +1,5 @@
+"use client"
+
 import type React from "react"
 import { useState, useEffect } from "react"
 import Link from "next/link"
@@ -14,7 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { MoreHorizontal, PlusCircle, Search, FileDown, Eye, Edit, Send, Printer, Trash2, RefreshCw } from "lucide-react"
+import { MoreHorizontal, PlusCircle, Search, FileDown, Eye, Edit, AlertCircle } from "lucide-react"
 import type { Sale } from "@/types"
 import { format } from "date-fns"
 import { useToast } from "@/hooks/use-toast"
@@ -90,335 +92,14 @@ export default function SalesPage() {
     }
   }
 
-  const handleViewDetails = (sale: Sale) => {
-    // TO DO: implement view details logic
-  }
-
-  const handleEditSale = (sale: Sale) => {
-    // TO DO: implement edit sale logic
-  }
-
-  const handleCancelSale = (sale: Sale) => {
-    // TO DO: implement cancel sale logic
-  }
-
-  const handlePrintSale = (sale: Sale) => {
-    // Create a new window for printing
-    const printWindow = window.open("", "_blank", "width=800,height=600")
-
-    if (!printWindow) {
-      toast({
-        title: "Print Failed",
-        description: "Please allow popups to print sales.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const printContent = generatePrintableSale(sale)
-
-    printWindow.document.write(printContent)
-    printWindow.document.close()
-
-    // Wait for content to load then print
-    printWindow.onload = () => {
-      printWindow.print()
-      printWindow.close()
-    }
-  }
-
-  const generatePrintableSale = (sale: Sale): string => {
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Sale ${sale.id}</title>
-        <style>
-          * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-          }
-          
-          body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-          }
-          
-          .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 40px;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 20px;
-          }
-          
-          .company-info h1 {
-            color: #2563eb;
-            font-size: 28px;
-            margin-bottom: 5px;
-          }
-          
-          .company-info p {
-            color: #666;
-            margin: 2px 0;
-          }
-          
-          .sale-info {
-            text-align: right;
-          }
-          
-          .sale-info h2 {
-            font-size: 24px;
-            color: #333;
-            margin-bottom: 10px;
-          }
-          
-          .sale-details {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            margin-bottom: 40px;
-          }
-          
-          .bill-to, .sale-meta {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-          }
-          
-          .bill-to h3, .sale-meta h3 {
-            margin-bottom: 15px;
-            color: #333;
-            font-size: 16px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-          }
-          
-          .items-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 30px;
-          }
-          
-          .items-table th,
-          .items-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-          }
-          
-          .items-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 12px;
-            letter-spacing: 0.5px;
-          }
-          
-          .items-table .text-right {
-            text-align: right;
-          }
-          
-          .totals {
-            margin-left: auto;
-            width: 300px;
-          }
-          
-          .totals-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #eee;
-          }
-          
-          .totals-row.total {
-            font-weight: bold;
-            font-size: 18px;
-            border-bottom: 2px solid #333;
-            margin-top: 10px;
-          }
-          
-          .status-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-          }
-          
-          .status-paid { background: #dcfce7; color: #166534; }
-          .status-sent { background: #f1f5f9; color: #475569; }
-          .status-draft { background: #f9fafb; color: #374151; border: 1px solid #d1d5db; }
-          .status-overdue { background: #fef2f2; color: #dc2626; }
-          .status-cancelled { background: #fef2f2; color: #dc2626; }
-          
-          .notes {
-            margin-top: 40px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-radius: 8px;
-          }
-          
-          .notes h3 {
-            margin-bottom: 10px;
-            color: #333;
-          }
-          
-          @media print {
-            body {
-              padding: 0;
-            }
-            
-            .header {
-              page-break-inside: avoid;
-            }
-            
-            .items-table {
-              page-break-inside: auto;
-            }
-            
-            .items-table tr {
-              page-break-inside: avoid;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="company-info">
-            <h1>SAJ Foods</h1>
-            <p>Address</p>
-            <p>Phone: (123) 456-7890</p>
-            <p>Email: info@sajfoods.net</p>
-          </div>
-          <div class="sale-info">
-            <h2>SALE</h2>
-            <p><strong>Sale ID:</strong> ${sale.id}</p>
-            <p><strong>Customer:</strong> ${sale.customer.name}</p>
-          </div>
-        </div>
-        
-        <div class="sale-details">
-          <div class="bill-to">
-            <h3>Bill To</h3>
-            <p><strong>${sale.customer.name}</strong></p>
-            ${sale.customer.email ? `<p>${sale.customer.email}</p>` : ""}
-            ${sale.customer.address ? `<p>${sale.customer.address}</p>` : ""}
-            ${sale.customer.phone ? `<p>${sale.customer.phone}</p>` : ""}
-          </div>
-          
-          <div class="sale-meta">
-            <h3>Sale Details</h3>
-            <p><strong>Issue Date:</strong> ${formatDate(sale.saleDate)}</p>
-            <p><strong>Due Date:</strong> ${formatDate(sale.saleDate)}</p>
-            <p><strong>Payment Terms:</strong> Net 30</p>
-          </div>
-        </div>
-        
-        <table class="items-table">
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th class="text-right">Qty</th>
-              <th class="text-right">Unit Price</th>
-              <th class="text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${
-              sale.items
-                ?.map(
-                  (item) => `
-              <tr>
-                <td>${item.description}</td>
-                <td class="text-right">${item.quantity}</td>
-                <td class="text-right">${formatCurrency(item.unitPrice)}</td>
-                <td class="text-right">${formatCurrency(item.total)}</td>
-              </tr>
-            `,
-                )
-                .join("") || '<tr><td colspan="4">No items found</td></tr>'
-            }
-          </tbody>
-        </table>
-        
-        <div class="totals">
-          <div class="totals-row">
-            <span>Subtotal:</span>
-            <span>${formatCurrency(sale.subtotal || 0)}</span>
-          </div>
-          <div class="totals-row">
-            <span>Tax:</span>
-            <span>${formatCurrency(sale.tax || 0)}</span>
-          </div>
-          <div class="totals-row total">
-            <span>Total:</span>
-            <span>${formatCurrency(sale.totalAmount)}</span>
-          </div>
-        </div>
-        
-        ${
-          sale.notes
-            ? `
-          <div class="notes">
-            <h3>Notes</h3>
-            <p>${sale.notes}</p>
-          </div>
-        `
-            : ""
-        }
-        
-        <div style="margin-top: 40px; text-align: center; color: #666; font-size: 12px;">
-          <p>Thank you for your business!</p>
-        </div>
-      </body>
-      </html>
-    `
-  }
-
-  const formatDate = (date: Date | string | null | undefined): string => {
-    if (!date) return "N/A"
-
-    try {
-      const dateObj = date instanceof Date ? date : new Date(date)
-      if (isNaN(dateObj.getTime())) return "Invalid Date"
-      return format(dateObj, "PP")
-    } catch (error) {
-      console.warn("Date formatting error:", error)
-      return "Invalid Date"
-    }
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2" />
-          <p>Loading sales...</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col h-full">
       <header className="flex items-center justify-between pb-4 mb-4 border-b">
-        <h1 className="text-2xl font-semibold">Sales</h1>
+        <h1 className="text-2xl font-semibold">Sales Transactions</h1>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleRefresh} disabled={isLoading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button variant="outline" onClick={handleExportSales}>
+          <Button variant="outline">
             <FileDown className="mr-2 h-4 w-4" />
-            Export
+            Export Sales
           </Button>
           <Link href="/sales/new">
             <Button>
@@ -431,23 +112,23 @@ export default function SalesPage() {
 
       <Card className="flex-grow">
         <CardHeader>
-          <CardTitle>Transaction Management</CardTitle>
-          <CardDescription>Track and manage all customer sales.</CardDescription>
-          <div className="relative mt-2">
+          <CardTitle>Sales Log</CardTitle>
+          <CardDescription>Manage and track all sales transactions.</CardDescription>
+          <form onSubmit={handleSearchSubmit} className="relative mt-2">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Search sales..."
+              placeholder="Search sales by ID, customer, or status..."
               className="pl-8 w-full md:w-1/3"
               value={searchTerm}
               onChange={handleSearchChange}
             />
-          </div>
+          </form>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="flex justify-center items-center py-8">
-              <p>Loading sales...</p>
+              <p>Loading sales data...</p>
             </div>
           ) : error ? (
             <div className="flex justify-center items-center py-8 text-destructive">
@@ -462,11 +143,10 @@ export default function SalesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Transaction #</TableHead>
+                  <TableHead>Sale ID</TableHead>
                   <TableHead>Customer</TableHead>
-                  <TableHead>Issue Date</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Payment Method</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>
                     <span className="sr-only">Actions</span>
@@ -478,10 +158,9 @@ export default function SalesPage() {
                   <TableRow key={sale.id}>
                     <TableCell className="font-medium">{sale.id}</TableCell>
                     <TableCell>{sale.customer.name}</TableCell>
-                    <TableCell>{formatDate(sale.saleDate)}</TableCell>
-                    <TableCell>{formatDate(sale.saleDate)}</TableCell>
+                    <TableCell>{format(new Date(sale.saleDate), "PP")}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{sale.paymentMethod}</Badge>
+                      <Badge variant={getStatusBadgeVariant(sale.status)}>{sale.status}</Badge>
                     </TableCell>
                     <TableCell className="text-right">{formatCurrency(sale.totalAmount)}</TableCell>
                     <TableCell>
@@ -505,13 +184,12 @@ export default function SalesPage() {
                               Edit Sale
                             </DropdownMenuItem>
                           </Link>
-                          <DropdownMenuItem onClick={() => handleCancelSale(sale)}>
-                            <Trash2 className="mr-2 h-4 w-4" /> Cancel Sale
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => handlePrintSale(sale)}>
-                            <FileDown className="mr-2 h-4 w-4" /> Print Sale
-                          </DropdownMenuItem>
+                          {sale.status !== "Cancelled" && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-destructive">Cancel Sale</DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -530,5 +208,3 @@ export default function SalesPage() {
     </div>
   )
 }
-
-
