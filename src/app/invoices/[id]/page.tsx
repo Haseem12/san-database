@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { ArrowLeft, Edit, Trash2, RefreshCw, Send } from "lucide-react"
+import { ArrowLeft, Edit, Trash2, RefreshCw, Send, AlertTriangle } from "lucide-react"
 import { PrintInvoice } from "@/components/print-invoice"
 import { useToast } from "@/hooks/use-toast"
 import type { Invoice } from "@/types"
@@ -28,6 +28,8 @@ import type { Invoice } from "@/types"
 export default function InvoiceDetailsPage({ params }: { params: { id: string } }) {
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [apiResponse, setApiResponse] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const { toast } = useToast()
 
@@ -35,13 +37,20 @@ export default function InvoiceDetailsPage({ params }: { params: { id: string } 
     const fetchInvoice = async () => {
       try {
         setIsLoading(true)
-        const response = await fetch(`https://sajfoods.net/busa-api/database/get_invoice.php?id=${params.id}`)
+        setError(null)
+
+        // Use the new endpoint that includes items
+        const response = await fetch(
+          `https://sajfoods.net/busa-api/database/get_invoice_with_items.php?id=${params.id}`,
+        )
 
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
         }
 
         const data = await response.json()
+        // Save the full API response for debugging
+        setApiResponse(data)
 
         if (data.success && data.data) {
           // Process dates
@@ -50,37 +59,33 @@ export default function InvoiceDetailsPage({ params }: { params: { id: string } 
             issueDate: new Date(data.data.issueDate),
             dueDate: new Date(data.data.dueDate),
           }
-          setInvoice(invoiceData)
-        } else if (Array.isArray(data) && data.length > 0) {
-          // Handle direct array response
-          const invoiceData = {
-            ...data[0],
-            issueDate: new Date(data[0].issueDate),
-            dueDate: new Date(data[0].dueDate),
-          }
+
+          // Log the items for debugging
+          console.log("Invoice items:", data.data.items)
+
           setInvoice(invoiceData)
         } else {
+          setError(data.message || "Invoice not found or invalid response format")
           toast({
             title: "Error",
-            description: "Invoice not found or invalid response format",
+            description: data.message || "Invoice not found or invalid response format",
             variant: "destructive",
           })
-          router.push("/invoices")
         }
       } catch (error: any) {
+        setError(`Failed to fetch invoice: ${error.message}`)
         toast({
           title: "Error",
           description: `Failed to fetch invoice: ${error.message}`,
           variant: "destructive",
         })
-        router.push("/invoices")
       } finally {
         setIsLoading(false)
       }
     }
 
     fetchInvoice()
-  }, [params.id, router, toast])
+  }, [params.id, toast])
 
   const handleDeleteInvoice = async () => {
     try {
@@ -155,6 +160,28 @@ export default function InvoiceDetailsPage({ params }: { params: { id: string } 
     )
   }
 
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full">
+        <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+        <h2 className="text-2xl font-semibold mb-2">Error Loading Invoice</h2>
+        <p className="text-muted-foreground mb-4">{error}</p>
+        <div className="flex gap-4">
+          <Link href="/invoices">
+            <Button>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Invoices
+            </Button>
+          </Link>
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Try Again
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   if (!invoice) {
     return (
       <div className="flex flex-col items-center justify-center h-full">
@@ -169,6 +196,9 @@ export default function InvoiceDetailsPage({ params }: { params: { id: string } 
       </div>
     )
   }
+
+  // Check if items array exists and has items
+  const hasItems = invoice.items && Array.isArray(invoice.items) && invoice.items.length > 0
 
   return (
     <div className="container mx-auto py-6">
@@ -228,12 +258,14 @@ export default function InvoiceDetailsPage({ params }: { params: { id: string } 
               <div>
                 <h3 className="font-semibold text-lg">{invoice.customer.name}</h3>
                 {invoice.customer.email && <p className="text-sm text-muted-foreground">{invoice.customer.email}</p>}
-                {invoice.customer.phone && <p className="text-sm text-muted-foreground">{invoice.customer.phone}</p>}
+                {invoice.customer.address && (
+                  <p className="text-sm text-muted-foreground">{invoice.customer.address}</p>
+                )}
               </div>
-              {invoice.customer.address && (
+              {invoice.customer.priceLevel && (
                 <div>
-                  <h4 className="text-sm font-medium text-muted-foreground">Billing Address</h4>
-                  <p className="text-sm">{invoice.customer.address}</p>
+                  <h4 className="text-sm font-medium text-muted-foreground">Price Level</h4>
+                  <p className="text-sm">{invoice.customer.priceLevel}</p>
                 </div>
               )}
             </div>
@@ -264,6 +296,12 @@ export default function InvoiceDetailsPage({ params }: { params: { id: string } 
                 <dt className="text-sm font-medium text-muted-foreground">Due Date</dt>
                 <dd className="text-sm">{formatDate(invoice.dueDate)}</dd>
               </div>
+              {invoice.saleId && (
+                <div>
+                  <dt className="text-sm font-medium text-muted-foreground">Sale ID</dt>
+                  <dd className="text-sm">{invoice.saleId}</dd>
+                </div>
+              )}
             </dl>
           </CardContent>
         </Card>
@@ -277,26 +315,43 @@ export default function InvoiceDetailsPage({ params }: { params: { id: string } 
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[50%]">Description</TableHead>
+                <TableHead className="w-[40%]">Product</TableHead>
                 <TableHead className="text-right">Quantity</TableHead>
+                <TableHead className="text-right">Unit</TableHead>
                 <TableHead className="text-right">Unit Price</TableHead>
                 <TableHead className="text-right">Total</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {invoice.items && invoice.items.length > 0 ? (
+              {hasItems ? (
                 invoice.items.map((item, index) => (
                   <TableRow key={item.id || index}>
-                    <TableCell className="font-medium">{item.description}</TableCell>
+                    <TableCell>
+                      <div>
+                        <div className="font-medium">{item.description}</div>
+                        {item.productId && (
+                          <div className="text-sm text-muted-foreground">Product ID: {item.productId}</div>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">{item.quantity}</TableCell>
+                    <TableCell className="text-right">{item.unitOfMeasure || "pcs"}</TableCell>
                     <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(item.total)}</TableCell>
+                    <TableCell className="text-right font-medium">{formatCurrency(item.total)}</TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
                     No items found for this invoice.
+                    {invoice.debug && (
+                      <div className="mt-2 text-xs">
+                        <p>
+                          Debug Info: Invoice ID: {invoice.debug.invoiceId}, Sale ID: {invoice.debug.saleId}, Item
+                          Count: {invoice.debug.itemCount}
+                        </p>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               )}
@@ -309,6 +364,12 @@ export default function InvoiceDetailsPage({ params }: { params: { id: string } 
               <span className="font-medium">Subtotal:</span>
               <span>{formatCurrency(invoice.subtotal || 0)}</span>
             </div>
+            {invoice.discountAmount > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="font-medium">Discount:</span>
+                <span>-{formatCurrency(invoice.discountAmount)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm">
               <span className="font-medium">Tax:</span>
               <span>{formatCurrency(invoice.tax || 0)}</span>
@@ -329,6 +390,23 @@ export default function InvoiceDetailsPage({ params }: { params: { id: string } 
           </CardHeader>
           <CardContent>
             <p className="text-sm">{invoice.notes}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Debug section - only visible during development */}
+      {process.env.NODE_ENV === "development" && apiResponse && (
+        <Card className="mt-8 border-dashed border-yellow-500">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <AlertTriangle className="h-5 w-5 mr-2 text-yellow-500" />
+              Debug Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="bg-gray-100 p-4 rounded-md overflow-auto text-xs">
+              {JSON.stringify(apiResponse, null, 2)}
+            </pre>
           </CardContent>
         </Card>
       )}
