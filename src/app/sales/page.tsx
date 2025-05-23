@@ -1,30 +1,34 @@
 "use client";
 
-import type React from "react"
-import { useState, useEffect } from "react"
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { MoreHorizontal, PlusCircle, Search, FileDown, Eye, Edit, Send, Printer, Trash2, RefreshCw } from "lucide-react"
-import type { Sale } from "@/types"
-import { format } from "date-fns"
-import { useToast } from "@/hooks/use-toast"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { MoreHorizontal, PlusCircle, Search, FileDown, Eye, Edit, AlertCircle } from "lucide-react"
-import type { Sale } from "@/types"
-import { format } from "date-fns"
-import { useToast } from "@/hooks/use-toast"
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { format } from "date-fns";
+import { 
+  MoreHorizontal, 
+  PlusCircle, 
+  Search, 
+  FileDown, 
+  Eye, 
+  Edit, 
+  AlertCircle 
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
+
+import { useToast } from "@/hooks/use-toast";
+import type { Sale } from "@/types";
 
 export default function SalesPage() {
   const [sales, setSales] = useState<Sale[]>([])
