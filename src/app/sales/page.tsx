@@ -47,7 +47,7 @@ export default function SalesPage() {
     setError(null)
 
     try {
-      const url = `https://sajfoods.net/busa-api/database/get_sales.php${search ? `?search=${encodeURIComponent(search)}` : ""}`
+      const response = await fetch(`https://sajfoods.net/busa-api/database/get_invoices.php${search ? `?search=${encodeURIComponent(search)}` : ""}`)
       const response = await fetch(url)
 
       if (!response.ok) {
