@@ -7,17 +7,19 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import ReceiptForm from '../ReceiptForm';
 import type { Receipt } from '@/types';
-import { mockReceipts } from '@/lib/mockData';
+// mockReceipts removed
+import { useRouter } from 'next/navigation';
+import { useToast } from '@/hooks/use-toast';
+
 
 export default function NewReceiptPage() {
+  const router = useRouter();
+  const { toast } = useToast();
   
-  const handleSaveNewReceipt = (receipt: Receipt) => {
-    // This is where you'd typically make an API call.
-    // For mock data, we'll add to the array.
-    // Note: This change is not persistent across page reloads for mock data.
-    mockReceipts.push(receipt);
-    console.log("New receipt added (mock):", receipt);
-    // The ReceiptForm will handle toast and redirection.
+  // The onSaveSuccess prop is now used to handle navigation after form submission
+  const handleSaveSuccess = (receiptId: string) => {
+    // Toast is handled by ReceiptForm, redirection is handled here.
+    router.push(`/receipts/${receiptId}`); // Navigate to the detail page of the new receipt
   };
 
   return (
@@ -34,7 +36,9 @@ export default function NewReceiptPage() {
         </h1>
       </header>
       
-      <ReceiptForm onSave={handleSaveNewReceipt} />
+      <ReceiptForm onSaveSuccess={handleSaveSuccess} />
     </div>
   );
 }
+    
+    
