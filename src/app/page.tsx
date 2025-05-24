@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { DollarSign, ShoppingCart, FileText, Package, Users, TrendingUp, Activity, BookUser, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
+import { DollarSign, ShoppingCart, FileText as FileTextIconLucide, Package, Users, TrendingUp, Activity, BookUser, CheckCircle, AlertCircle, RefreshCw, FileText as ReportIcon } from "lucide-react";
 import type { Sale, Invoice, Product as ProductType } from '@/types';
 import { format, parseISO, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -45,57 +45,69 @@ export default function DashboardPage() {
         ]);
 
         // Process Sales
-        if (!salesRes.ok) throw new Error(`Sales fetch failed: ${salesRes.statusText} (Status: ${salesRes.status})`);
-        const salesData = await salesRes.json();
-        if (salesData.success && Array.isArray(salesData.data)) {
-          setSales(salesData.data.map((s: any) => {
+        if (!salesRes.ok) {
+            const errorText = await salesRes.text().catch(() => `Sales fetch failed: ${salesRes.statusText}`);
+            throw new Error(`Sales fetch failed: ${salesRes.status} - ${errorText.substring(0,100)}`);
+        }
+        const salesResult = await salesRes.json();
+        console.log("[Dashboard Fetch] Sales API Response:", salesResult);
+        if (salesResult.success && Array.isArray(salesResult.data)) {
+          setSales(salesResult.data.map((s: any) => {
             const saleId = (s.id !== null && s.id !== undefined) ? String(s.id) : `fallback_sale_${Math.random().toString(36).substring(2, 9)}`;
-            const customerNameStr = (s.customer && typeof s.customer === 'object' && s.customer.name) ? String(s.customer.name) : 'N/A';
+            const customerNameStr = (s.customer && typeof s.customer === 'object' && s.customer.name) ? String(s.customer.name) : (s.customerName ? String(s.customerName) : 'N/A');
             return {
               ...s,
               id: saleId,
               saleDate: s.saleDate ? (isValid(parseISO(String(s.saleDate).replace(" ", "T"))) ? parseISO(String(s.saleDate).replace(" ", "T")) : new Date()) : new Date(),
               createdAt: s.createdAt ? (isValid(parseISO(String(s.createdAt).replace(" ", "T"))) ? parseISO(String(s.createdAt).replace(" ", "T")) : new Date()) : new Date(),
-              customer: { ...(s.customer || {}), name: customerNameStr },
+              customer: { ...(s.customer || {}), name: customerNameStr, id: s.customerId || s.customer?.id },
               totalAmount: Number(s.totalAmount) || 0,
             };
           }));
         } else {
-          console.warn("Failed to fetch sales or data format incorrect:", salesData.message);
+          console.warn("Failed to fetch sales or data format incorrect:", salesResult.message);
           setSales([]);
         }
 
         // Process Invoices
-        if (!invoicesRes.ok) throw new Error(`Invoices fetch failed: ${invoicesRes.statusText} (Status: ${invoicesRes.status})`);
-        const invoicesData = await invoicesRes.json();
-        if (invoicesData.success && Array.isArray(invoicesData.data)) {
-          setInvoices(invoicesData.data.map((i: any) => {
+        if (!invoicesRes.ok) {
+            const errorText = await invoicesRes.text().catch(() => `Invoices fetch failed: ${invoicesRes.statusText}`);
+            throw new Error(`Invoices fetch failed: ${invoicesRes.status} - ${errorText.substring(0,100)}`);
+        }
+        const invoicesResult = await invoicesRes.json();
+        console.log("[Dashboard Fetch] Invoices API Response:", invoicesResult);
+        if (invoicesResult.success && Array.isArray(invoicesResult.data)) {
+          setInvoices(invoicesResult.data.map((i: any) => {
             const invoiceId = (i.id !== null && i.id !== undefined) ? String(i.id) : `fallback_inv_${Math.random().toString(36).substring(2, 9)}`;
-            const customerNameStr = (i.customer && typeof i.customer === 'object' && i.customer.name) ? String(i.customer.name) : 'N/A';
+            const customerNameStr = (i.customer && typeof i.customer === 'object' && i.customer.name) ? String(i.customer.name) : (i.customerName ? String(i.customerName) : 'N/A');
             return {
               ...i,
               id: invoiceId,
               issueDate: i.issueDate ? (isValid(parseISO(String(i.issueDate).replace(" ", "T"))) ? parseISO(String(i.issueDate).replace(" ", "T")) : new Date()) : new Date(),
               createdAt: i.createdAt ? (isValid(parseISO(String(i.createdAt).replace(" ", "T"))) ? parseISO(String(i.createdAt).replace(" ", "T")) : new Date()) : new Date(),
-              customer: { ...(i.customer || {}), name: customerNameStr },
+              customer: { ...(i.customer || {}), name: customerNameStr, id: i.customerId || i.customer?.id },
               totalAmount: Number(i.totalAmount) || 0,
             };
           }));
         } else {
-          console.warn("Failed to fetch invoices or data format incorrect:", invoicesData.message);
+          console.warn("Failed to fetch invoices or data format incorrect:", invoicesResult.message);
           setInvoices([]);
         }
         
         // Process Products
-        if (!productsRes.ok) throw new Error(`Products fetch failed: ${productsRes.statusText} (Status: ${productsRes.status})`);
-        const productsResponse = await productsRes.json();
+        if (!productsRes.ok) {
+            const errorText = await productsRes.text().catch(() => `Products fetch failed: ${productsRes.statusText}`);
+            throw new Error(`Products fetch failed: ${productsRes.status} - ${errorText.substring(0,100)}`);
+        }
+        const productsResult = await productsRes.json();
+        console.log("[Dashboard Fetch] Products API Response:", productsResult);
         let productsDataToSet: ProductType[] = [];
-        if (Array.isArray(productsResponse)) { // Direct array
-            productsDataToSet = productsResponse;
-        } else if (productsResponse.success && Array.isArray(productsResponse.data)) { // Object with data property
-            productsDataToSet = productsResponse.data;
+        if (productsResult.success && Array.isArray(productsResult.data)) {
+            productsDataToSet = productsResult.data;
+        } else if (Array.isArray(productsResult)) { 
+            productsDataToSet = productsResult;
         } else {
-            console.warn("Failed to fetch products or data format incorrect:", productsResponse.message);
+            console.warn("Failed to fetch products or data format incorrect:", productsResult.message);
         }
         setProducts(productsDataToSet.map((p: any) => {
           const productId = (p.id !== null && p.id !== undefined) ? String(p.id) : `fallback_prod_${Math.random().toString(36).substring(2, 9)}`;
@@ -112,7 +124,6 @@ export default function DashboardPage() {
       } catch (err: any) {
         setError(err.message || "Failed to fetch dashboard data.");
         toast({ title: "Error", description: err.message || "Could not load dashboard data.", variant: "destructive" });
-        // Set states to empty arrays on error to prevent issues with undefined data
         setSales([]);
         setInvoices([]);
         setProducts([]);
@@ -154,7 +165,7 @@ export default function DashboardPage() {
     if (isLoading || error) return;
 
     const salesActivities: DashboardActivity[] = sales.map(s => {
-      const saleIdStr = String(s.id || `fallback_sale_${Math.random()}`);
+      const saleIdStr = String(s.id || `fallback_sale_${Math.random().toString(36).substring(2,9)}`);
       return {
         id: saleIdStr,
         date: new Date(s.createdAt || s.saleDate || Date.now()), 
@@ -169,7 +180,7 @@ export default function DashboardPage() {
     });
 
     const invoiceActivities: DashboardActivity[] = invoices.map(i => {
-      const invoiceIdStr = String(i.id || `fallback_inv_${Math.random()}`);
+      const invoiceIdStr = String(i.id || `fallback_inv_${Math.random().toString(36).substring(2,9)}`);
       return {
         id: invoiceIdStr,
         date: new Date(i.createdAt || i.issueDate || Date.now()),
@@ -177,7 +188,7 @@ export default function DashboardPage() {
         title: `Invoice ${i.invoiceNumber || invoiceIdStr}`,
         subtitle: `Status: ${i.status}`,
         amount: Number(i.totalAmount) || 0,
-        icon: FileText,
+        icon: FileTextIconLucide,
         iconColorClass: 'text-blue-500',
         link: `/invoices/${invoiceIdStr}`
       };
@@ -205,7 +216,7 @@ export default function DashboardPage() {
       <div className="flex flex-col items-center justify-center h-full text-center">
         <AlertCircle className="h-10 w-10 text-destructive mb-4" />
         <p className="text-lg font-semibold text-destructive">Failed to load dashboard data</p>
-        <p className="text-muted-foreground mb-4">{error}</p>
+        <p className="text-muted-foreground mb-4 max-w-md">{error}</p>
         <Button onClick={() => { setIsLoading(true); /* Re-trigger fetch logic if needed, or simply reload */ window.location.reload(); }}>
           <RefreshCw className="mr-2 h-4 w-4" /> Try Again
         </Button>
@@ -239,7 +250,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pending Invoices</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
+            <FileTextIconLucide className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summaryStats.pendingInvoices}</div>
@@ -264,7 +275,7 @@ export default function DashboardPage() {
             <CardTitle>Quick Actions</CardTitle>
             <CardDescription>Get started with common tasks.</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4">
+          <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <Link href="/sales/new" passHref>
               <Button className="w-full">
                 <ShoppingCart className="mr-2 h-4 w-4" /> New Sale
@@ -272,7 +283,7 @@ export default function DashboardPage() {
             </Link>
             <Link href="/invoices/new" passHref>
               <Button className="w-full">
-                <FileText className="mr-2 h-4 w-4" /> New Invoice
+                <FileTextIconLucide className="mr-2 h-4 w-4" /> New Invoice
               </Button>
             </Link>
             <Link href="/products/new" passHref>
@@ -285,14 +296,14 @@ export default function DashboardPage() {
                 <Users className="mr-2 h-4 w-4" /> Add Ledger Account
               </Button>
             </Link>
-            <Link href="/ledger-accounts" passHref>
-              <Button className="w-full col-span-2 sm:col-span-1">
-                <BookUser className="mr-2 h-4 w-4" /> Manage Accounts
+             <Link href="/activities" passHref>
+              <Button className="w-full">
+                <Activity className="mr-2 h-4 w-4" /> View All Activities
               </Button>
             </Link>
-             <Link href="/activities" passHref>
-              <Button className="w-full col-span-2 sm:col-span-1">
-                <Activity className="mr-2 h-4 w-4" /> View All Activities
+             <Link href="/report" passHref>
+              <Button className="w-full">
+                <ReportIcon className="mr-2 h-4 w-4" /> About the App
               </Button>
             </Link>
           </CardContent>
@@ -321,7 +332,7 @@ export default function DashboardPage() {
                         {activity.amount !== undefined && (
                             <span className="text-sm font-semibold">{formatCurrency(activity.amount)}</span>
                         )}
-                        <p className="text-xs text-muted-foreground">{format(activity.date, 'PP')}</p>
+                        <p className="text-xs text-muted-foreground">{activity.date instanceof Date && isValid(activity.date) ? format(activity.date, 'PP') : 'Invalid Date'}</p>
                     </div>
                   </li>
                 ))}
@@ -335,3 +346,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
