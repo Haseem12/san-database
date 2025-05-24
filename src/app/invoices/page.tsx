@@ -393,11 +393,12 @@ export default function InvoicesPage() {
       <body>
         <div class="header">
           <div class="company-info">
-            <h1>SAJ Foods Limited</h1>
-            <p>KM 142 Kano-Kaduna Expressway, Maraban Gwanda, </p>
-            <p>Sabon Gari, Zaria, Kaduna State, Nigeria Postal Code: 810106</p>
-            <p>Phone: (123) 817-0707020, (123) 8076-545454</p>
+            <h1>SAJ Foods Limited RC No. RC510611L</h1>
+            <p>KM 142 Kano-Kaduna Expressway, Maraban Gwanda Sabon-Gari</p>
+            <p>Zaria, Kaduna State, Nigeria</p>
+            <p>Phone: +234 (0) 817 070 7020,  +234 (0) 807 654 5454</p>
             <p>Email: info@sajfoods.net</p>
+            <p>Website: sajfoods.net</p>
           </div>
           <div class="invoice-info">
             <h2>INVOICE</h2>
