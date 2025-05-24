@@ -637,11 +637,12 @@ export default function LedgerAccountDetailPage() {
       <body>
         <div class="header">
           <div class="company-info">
-            <h1>SAJ Foods</h1>
-            <p>123 Business Street</p>
-            <p>Lagos, Nigeria</p>
-            <p>Phone: +234 (0) 123 456 7890</p>
+            <h1>SAJ Foods Limited RC No. RC510611L</h1>
+            <p>KM 142 Kano-Kaduna Expressway, Maraban Gwanda Sabon-Gari</p>
+            <p>Zaria, Kaduna State, Nigeria</p>
+            <p>Phone: +234 (0) 817 070 7020,  +234 (0) 807 654 5454</p>
             <p>Email: info@sajfoods.net</p>
+            <p>Website: sajfoods.net</p>
           </div>
           <div class="statement-info">
             <h2>ACCOUNT STATEMENT</h2>
