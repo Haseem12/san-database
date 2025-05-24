@@ -5,10 +5,11 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
 import ReceiptForm from '../../ReceiptForm';
 import type { Receipt } from '@/types';
-import { mockReceipts, mockLedgerAccounts } from '@/lib/mockData';
+// mockReceipts, mockLedgerAccounts removed
+import { useToast } from '@/hooks/use-toast';
 
 export default function EditReceiptPage() {
   const params = useParams();
@@ -16,36 +17,65 @@ export default function EditReceiptPage() {
   const receiptId = params.id as string;
   const [receipt, setReceipt] = useState<Receipt | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (receiptId) {
-      // Simulate fetching receipt data
-      const foundReceipt = mockReceipts.find(r => r.id === receiptId);
-      if (foundReceipt && !foundReceipt.ledgerAccountName) {
-        const account = mockLedgerAccounts.find(acc => acc.id === foundReceipt.ledgerAccountId);
-        setReceipt({ ...foundReceipt, ledgerAccountName: account?.name || 'Unknown Account' });
-      } else {
-        setReceipt(foundReceipt);
-      }
-      setIsLoading(false);
+      setIsLoading(true);
+      setError(null);
+      fetch(`https://sajfoods.net/busa-api/database/get_receipt.php?id=${receiptId}`)
+        .then(async res => {
+          if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`HTTP error! status: ${res.status} - ${errorText}`);
+          }
+          return res.json();
+        })
+        .then(data => {
+          if (data.success && data.data) {
+            // Ensure date fields are Date objects
+            const fetchedReceipt = {
+              ...data.data,
+              receiptDate: new Date(data.data.receiptDate),
+              createdAt: new Date(data.data.createdAt),
+              updatedAt: data.data.updatedAt ? new Date(data.data.updatedAt) : new Date(),
+            };
+            setReceipt(fetchedReceipt);
+          } else {
+            setError(data.message || "Failed to fetch receipt data for editing.");
+            setReceipt(undefined);
+          }
+        })
+        .catch(err => {
+            setError(err.message || "Error fetching receipt for editing.");
+            toast({title: "Error", description: `Failed to load receipt: ${err.message}`, variant: "destructive"});
+        })
+        .finally(() => setIsLoading(false));
     }
-  }, [receiptId]);
+  }, [receiptId, toast]);
 
-  const handleSaveChanges = (updatedReceipt: Receipt) => {
-    // This is where you'd typically make an API call.
-    // For mock data, we'll update the item in the array.
-    const index = mockReceipts.findIndex(r => r.id === updatedReceipt.id);
-    if (index !== -1) {
-      mockReceipts[index] = updatedReceipt;
-    }
-    console.log("Receipt updated (mock):", updatedReceipt);
-    // The ReceiptForm will handle toast and redirection.
+  const handleSaveSuccess = (updatedReceiptId: string) => {
+    toast({
+      title: "Receipt Updated",
+      description: `Receipt has been successfully updated.`,
+    });
+    router.push(`/receipts/${updatedReceiptId}`);
   };
 
   if (isLoading) {
-    return <div className="flex items-center justify-center h-full"><p>Loading receipt details...</p></div>;
+    return <div className="flex items-center justify-center h-full"><RefreshCw className="h-8 w-8 animate-spin mr-2" /> Loading receipt details...</div>;
   }
 
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full">
+        <p className="mb-4 text-destructive">Error: {error}</p>
+        <Link href="/receipts" passHref><Button variant="outline"><ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Receipts</Button></Link>
+      </div>
+    );
+  }
+  
   if (!receipt) {
     return (
       <div className="flex flex-col items-center justify-center h-full">
@@ -73,7 +103,9 @@ export default function EditReceiptPage() {
         </h1>
       </header>
       
-      <ReceiptForm receipt={receipt} onSave={handleSaveChanges} />
+      <ReceiptForm receipt={receipt} onSaveSuccess={handleSaveSuccess} />
     </div>
   );
 }
+    
+    
