@@ -5,16 +5,16 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { DollarSign, ShoppingCart, FileText, Package, Users, TrendingUp, Activity, BookUser, CheckCircle, AlertCircle } from "lucide-react";
+import { DollarSign, ShoppingCart, FileText, Package, Users, TrendingUp, Activity, BookUser, CheckCircle, AlertCircle, RefreshCw } from "lucide-react";
 import type { Sale, Invoice, Product as ProductType } from '@/types';
-import { mockSales, mockInvoices, mockProducts } from '@/lib/mockData';
-import { format } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 
 interface DashboardActivity {
   id: string;
   date: Date;
-  type: 'Sale' | 'Invoice' | 'Product Added';
+  type: 'Sale' | 'Invoice';
   title: string;
   subtitle: string;
   amount?: number;
@@ -24,78 +24,194 @@ interface DashboardActivity {
 }
 
 export default function DashboardPage() {
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [products, setProducts] = useState<ProductType[]>([]);
   const [recentActivities, setRecentActivities] = useState<DashboardActivity[]>([]);
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const [salesRes, invoicesRes, productsRes] = await Promise.all([
+          fetch('https://sajfoods.net/busa-api/database/get_sales.php'),
+          fetch('https://sajfoods.net/busa-api/database/get_invoices.php'),
+          fetch('https://sajfoods.net/busa-api/database/get_products.php')
+        ]);
+
+        // Process Sales
+        if (!salesRes.ok) throw new Error(`Sales fetch failed: ${salesRes.statusText} (Status: ${salesRes.status})`);
+        const salesData = await salesRes.json();
+        if (salesData.success && Array.isArray(salesData.data)) {
+          setSales(salesData.data.map((s: any) => {
+            const saleId = (s.id !== null && s.id !== undefined) ? String(s.id) : `fallback_sale_${Math.random().toString(36).substring(2, 9)}`;
+            const customerNameStr = (s.customer && typeof s.customer === 'object' && s.customer.name) ? String(s.customer.name) : 'N/A';
+            return {
+              ...s,
+              id: saleId,
+              saleDate: s.saleDate ? (isValid(parseISO(String(s.saleDate).replace(" ", "T"))) ? parseISO(String(s.saleDate).replace(" ", "T")) : new Date()) : new Date(),
+              createdAt: s.createdAt ? (isValid(parseISO(String(s.createdAt).replace(" ", "T"))) ? parseISO(String(s.createdAt).replace(" ", "T")) : new Date()) : new Date(),
+              customer: { ...(s.customer || {}), name: customerNameStr },
+              totalAmount: Number(s.totalAmount) || 0,
+            };
+          }));
+        } else {
+          console.warn("Failed to fetch sales or data format incorrect:", salesData.message);
+          setSales([]);
+        }
+
+        // Process Invoices
+        if (!invoicesRes.ok) throw new Error(`Invoices fetch failed: ${invoicesRes.statusText} (Status: ${invoicesRes.status})`);
+        const invoicesData = await invoicesRes.json();
+        if (invoicesData.success && Array.isArray(invoicesData.data)) {
+          setInvoices(invoicesData.data.map((i: any) => {
+            const invoiceId = (i.id !== null && i.id !== undefined) ? String(i.id) : `fallback_inv_${Math.random().toString(36).substring(2, 9)}`;
+            const customerNameStr = (i.customer && typeof i.customer === 'object' && i.customer.name) ? String(i.customer.name) : 'N/A';
+            return {
+              ...i,
+              id: invoiceId,
+              issueDate: i.issueDate ? (isValid(parseISO(String(i.issueDate).replace(" ", "T"))) ? parseISO(String(i.issueDate).replace(" ", "T")) : new Date()) : new Date(),
+              createdAt: i.createdAt ? (isValid(parseISO(String(i.createdAt).replace(" ", "T"))) ? parseISO(String(i.createdAt).replace(" ", "T")) : new Date()) : new Date(),
+              customer: { ...(i.customer || {}), name: customerNameStr },
+              totalAmount: Number(i.totalAmount) || 0,
+            };
+          }));
+        } else {
+          console.warn("Failed to fetch invoices or data format incorrect:", invoicesData.message);
+          setInvoices([]);
+        }
+        
+        // Process Products
+        if (!productsRes.ok) throw new Error(`Products fetch failed: ${productsRes.statusText} (Status: ${productsRes.status})`);
+        const productsResponse = await productsRes.json();
+        let productsDataToSet: ProductType[] = [];
+        if (Array.isArray(productsResponse)) { // Direct array
+            productsDataToSet = productsResponse;
+        } else if (productsResponse.success && Array.isArray(productsResponse.data)) { // Object with data property
+            productsDataToSet = productsResponse.data;
+        } else {
+            console.warn("Failed to fetch products or data format incorrect:", productsResponse.message);
+        }
+        setProducts(productsDataToSet.map((p: any) => {
+          const productId = (p.id !== null && p.id !== undefined) ? String(p.id) : `fallback_prod_${Math.random().toString(36).substring(2, 9)}`;
+          return {
+            ...p,
+            id: productId,
+            createdAt: p.createdAt ? (isValid(parseISO(String(p.createdAt).replace(" ", "T"))) ? parseISO(String(p.createdAt).replace(" ", "T")) : new Date()) : new Date(),
+            stock: Number(p.stock) || 0,
+            lowStockThreshold: Number(p.lowStockThreshold) || 0,
+            priceTiers: typeof p.priceTiers === 'string' ? JSON.parse(p.priceTiers || '[]') : (p.priceTiers || [])
+          };
+        }));
+
+      } catch (err: any) {
+        setError(err.message || "Failed to fetch dashboard data.");
+        toast({ title: "Error", description: err.message || "Could not load dashboard data.", variant: "destructive" });
+        // Set states to empty arrays on error to prevent issues with undefined data
+        setSales([]);
+        setInvoices([]);
+        setProducts([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, [toast]);
 
   const summaryStats = useMemo(() => {
-    const totalRevenue = mockSales
+    const totalRevenue = sales
       .filter(s => s.status === 'Completed')
-      .reduce((sum, s) => sum + s.totalAmount, 0);
+      .reduce((sum, s) => sum + (Number(s.totalAmount) || 0), 0);
     
-    const totalSales = mockSales.length;
+    const totalSalesCount = sales.length;
 
-    const pendingInvoices = mockInvoices.filter(
+    const pendingInvoicesCount = invoices.filter(
       i => i.status === 'Draft' || i.status === 'Sent' || i.status === 'Overdue'
     ).length;
 
-    const lowStockItems = mockProducts.filter(
-      p => p.stock <= (p.lowStockThreshold || 0)
+    const lowStockItemsCount = products.filter(
+      p => (Number(p.stock) || 0) <= (Number(p.lowStockThreshold) || 0)
     ).length;
 
     return {
       totalRevenue,
-      totalSales,
-      pendingInvoices,
-      lowStockItems,
+      totalSales: totalSalesCount,
+      pendingInvoices: pendingInvoicesCount,
+      lowStockItems: lowStockItemsCount,
     };
-  }, []);
+  }, [sales, invoices, products]);
   
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(amount);
   };
 
   useEffect(() => {
-    const salesActivities: DashboardActivity[] = mockSales.map(s => ({
-      id: `sale-${s.id}`,
-      date: new Date(s.createdAt || s.saleDate), 
-      type: 'Sale',
-      title: `Sale #${s.id.split('_')[1]}`,
-      subtitle: `Customer: ${s.customer.name}`,
-      amount: s.totalAmount,
-      icon: ShoppingCart,
-      iconColorClass: 'text-green-500',
-      link: `/sales/${s.id}`
-    }));
+    if (isLoading || error) return;
 
-    const invoiceActivities: DashboardActivity[] = mockInvoices.map(i => ({
-      id: `invoice-${i.id}`,
-      date: new Date(i.createdAt || i.issueDate),
-      type: 'Invoice',
-      title: `Invoice ${i.invoiceNumber}`,
-      subtitle: `Status: ${i.status}`,
-      amount: i.totalAmount,
-      icon: FileText,
-      iconColorClass: 'text-blue-500',
-      link: `/invoices/${i.id}`
-    }));
+    const salesActivities: DashboardActivity[] = sales.map(s => {
+      const saleIdStr = String(s.id || `fallback_sale_${Math.random()}`);
+      return {
+        id: saleIdStr,
+        date: new Date(s.createdAt || s.saleDate || Date.now()), 
+        type: 'Sale',
+        title: `Sale #${saleIdStr.includes('_') ? (saleIdStr.split('_')[1] || saleIdStr) : saleIdStr}`,
+        subtitle: `Customer: ${s.customer?.name || 'N/A'}`,
+        amount: Number(s.totalAmount) || 0,
+        icon: ShoppingCart,
+        iconColorClass: 'text-green-500',
+        link: `/sales/${saleIdStr}`
+      };
+    });
 
-    const productActivities: DashboardActivity[] = mockProducts.map(p => ({
-      id: `product-${p.id}`,
-      date: new Date(p.createdAt),
-      type: 'Product Added',
-      title: 'Product Added',
-      subtitle: p.name,
-      icon: p.stock > (p.lowStockThreshold || 0) ? Package : AlertCircle,
-      iconColorClass: p.stock > (p.lowStockThreshold || 0) ? 'text-orange-500' : 'text-red-500',
-      link: `/products/${p.id}/edit` 
-    }));
+    const invoiceActivities: DashboardActivity[] = invoices.map(i => {
+      const invoiceIdStr = String(i.id || `fallback_inv_${Math.random()}`);
+      return {
+        id: invoiceIdStr,
+        date: new Date(i.createdAt || i.issueDate || Date.now()),
+        type: 'Invoice',
+        title: `Invoice ${i.invoiceNumber || invoiceIdStr}`,
+        subtitle: `Status: ${i.status}`,
+        amount: Number(i.totalAmount) || 0,
+        icon: FileText,
+        iconColorClass: 'text-blue-500',
+        link: `/invoices/${invoiceIdStr}`
+      };
+    });
 
-    const combined = [...salesActivities, ...invoiceActivities, ...productActivities]
+    const combined = [...salesActivities, ...invoiceActivities]
       .sort((a, b) => b.date.getTime() - a.date.getTime())
       .slice(0, 5); 
 
     setRecentActivities(combined);
-  }, []);
+  }, [sales, invoices, isLoading, error]);
 
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full">
+        <RefreshCw className="h-10 w-10 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground">Loading dashboard data...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center">
+        <AlertCircle className="h-10 w-10 text-destructive mb-4" />
+        <p className="text-lg font-semibold text-destructive">Failed to load dashboard data</p>
+        <p className="text-muted-foreground mb-4">{error}</p>
+        <Button onClick={() => { setIsLoading(true); /* Re-trigger fetch logic if needed, or simply reload */ window.location.reload(); }}>
+          <RefreshCw className="mr-2 h-4 w-4" /> Try Again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -104,22 +220,20 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Revenue (Completed Sales)</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(summaryStats.totalRevenue)}</div>
-            {/* <p className="text-xs text-muted-foreground">+20.1% from last month</p> */}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Sales Recorded</CardTitle>
             <ShoppingCart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">+{summaryStats.totalSales}</div>
-            {/* <p className="text-xs text-muted-foreground">+180.1% from last month</p> */}
           </CardContent>
         </Card>
         <Card>
@@ -213,7 +327,7 @@ export default function DashboardPage() {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">No recent activities found.</p>
+              <p className="text-sm text-muted-foreground">No recent sales or invoice activities found.</p>
             )}
           </CardContent>
         </Card>
@@ -221,4 +335,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
