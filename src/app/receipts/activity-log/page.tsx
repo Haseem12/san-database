@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { DatePickerComponent } from '@/components/ui/date-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Label } from '@/components/ui/label'; // Added import for Label
+import { Label } from '@/components/ui/label';
 import type { Receipt, ReceiptPaymentMethod } from '@/types';
 import { format, startOfDay, endOfDay, isValid, parseISO } from 'date-fns';
 import { Download, RefreshCw } from 'lucide-react';
@@ -34,11 +34,11 @@ export default function ReceiptActivityLogPage() {
         const errorText = await response.text().catch(() => "Failed to read error text.");
         throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
-      const data = await response.json();
-      console.log("[ReceiptLog Fetch] Raw API data:", data);
+      const result = await response.json();
+      console.log("[ReceiptLog Fetch] Raw API data:", result);
 
-      if (data.success && Array.isArray(data.data)) {
-        const parsedReceipts = data.data.map((r: any) => {
+      if (result.success && Array.isArray(result.data)) {
+        const parsedReceipts = result.data.map((r: any) => {
           let receiptDate = null;
           let createdAt = null;
 
@@ -58,16 +58,19 @@ export default function ReceiptActivityLogPage() {
              console.warn(`[ReceiptLog Parse] Missing createdAt for ${r.id}`);
           }
 
+          const amount = Number(r.amountReceived);
+
           return { 
             ...r, 
-            receiptDate: receiptDate, // Can be null
-            createdAt: createdAt // Can be null
+            receiptDate: receiptDate, 
+            createdAt: createdAt,
+            amountReceived: isNaN(amount) ? 0 : amount, // Ensure amountReceived is a number
           };
         });
         setAllReceipts(parsedReceipts);
-        console.log("[ReceiptLog Fetch] Parsed receipts count:", parsedReceipts.length);
+        console.log("[ReceiptLog Fetch] Parsed receipts count:", parsedReceipts.length, "First parsed receipt:", parsedReceipts[0]);
       } else {
-        toast({ title: "Error", description: data.message || "Failed to fetch receipts log: Unexpected data format.", variant: "destructive" });
+        toast({ title: "Error", description: result.message || "Failed to fetch receipts log: Unexpected data format.", variant: "destructive" });
         setAllReceipts([]);
       }
     } catch (error: any) {
@@ -89,12 +92,12 @@ export default function ReceiptActivityLogPage() {
 
     if (fromDate && isValid(fromDate)) {
       const startDate = startOfDay(fromDate);
-      receipts = receipts.filter(r => r.receiptDate && new Date(r.receiptDate) >= startDate);
+      receipts = receipts.filter(r => r.receiptDate && isValid(new Date(r.receiptDate)) && new Date(r.receiptDate) >= startDate);
     }
 
     if (toDate && isValid(toDate)) {
       const endDate = endOfDay(toDate);
-      receipts = receipts.filter(r => r.receiptDate && new Date(r.receiptDate) <= endDate);
+      receipts = receipts.filter(r => r.receiptDate && isValid(new Date(r.receiptDate)) && new Date(r.receiptDate) <= endDate);
     }
 
     if (paymentMethodFilter === 'Cash') {
@@ -105,9 +108,9 @@ export default function ReceiptActivityLogPage() {
     }
     
     receipts.sort((a, b) => {
-        const dateA = a.receiptDate ? new Date(a.receiptDate).getTime() : 0;
-        const dateB = b.receiptDate ? new Date(b.receiptDate).getTime() : 0;
-        return dateB - dateA;
+        const dateA = a.receiptDate && isValid(new Date(a.receiptDate)) ? new Date(a.receiptDate).getTime() : 0;
+        const dateB = b.receiptDate && isValid(new Date(b.receiptDate)) ? new Date(b.receiptDate).getTime() : 0;
+        return dateB - dateA; // Sort descending by date
     });
     setFilteredReceipts(receipts);
     console.log("[ReceiptLog Filter] Filtered receipts count:", receipts.length);
@@ -115,36 +118,44 @@ export default function ReceiptActivityLogPage() {
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    fetchReceiptsForLog(); // fetchReceiptsForLog now sets isLoading to false
+    fetchReceiptsForLog();
     toast({ title: "Refreshed", description: "Receipt log updated." });
   };
 
   const formatCurrency = (amount: number) => {
+    if (isNaN(amount)) return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(0);
     return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(amount);
   };
 
   const totalAmountFiltered = useMemo(() => {
-    return filteredReceipts.reduce((sum, receipt) => sum + receipt.amountReceived, 0);
+    return filteredReceipts.reduce((sum, receipt) => sum + (receipt.amountReceived || 0), 0); // Ensure receipt.amountReceived is treated as number
   }, [filteredReceipts]);
 
   const totalCashAmount = useMemo(() => {
     return filteredReceipts
       .filter(r => r.paymentMethod === 'Cash')
-      .reduce((sum, receipt) => sum + receipt.amountReceived, 0);
+      .reduce((sum, receipt) => sum + (receipt.amountReceived || 0), 0);
   }, [filteredReceipts]);
 
   const totalBankAmount = useMemo(() => {
     const bankPaymentMethods: ReceiptPaymentMethod[] = ['Card', 'Transfer', 'Online', 'Cheque'];
     return filteredReceipts
       .filter(r => bankPaymentMethods.includes(r.paymentMethod))
-      .reduce((sum, receipt) => sum + receipt.amountReceived, 0);
+      .reduce((sum, receipt) => sum + (receipt.amountReceived || 0), 0);
   }, [filteredReceipts]);
 
-  const formatDateSafe = (dateInput: Date | null | undefined) => {
-    if (!dateInput || !isValid(new Date(dateInput))) {
-      return "N/A";
+  const formatDateSafe = (dateInput: Date | string | null | undefined) => {
+    if (!dateInput) return "N/A";
+    let date: Date | null = null;
+    if (typeof dateInput === 'string') {
+        const parsed = dateInput.includes(" ") ? parseISO(dateInput.replace(" ", "T")) : parseISO(dateInput);
+        if (isValid(parsed)) date = parsed;
+    } else if (dateInput instanceof Date && isValid(dateInput)) {
+        date = dateInput;
     }
-    return format(new Date(dateInput), 'PP');
+    
+    if (!date || !isValid(date)) return "Invalid Date";
+    return format(date, 'PP');
   };
 
   if (isLoading && !isRefreshing) {
@@ -269,6 +280,8 @@ export default function ReceiptActivityLogPage() {
   );
 }
     
+    
+
     
 
     
