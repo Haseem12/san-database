@@ -1,18 +1,17 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { DatePickerComponent } from '@/components/ui/date-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Label } from '@/components/ui/label'; // Added import for Label
 import type { Receipt, ReceiptPaymentMethod } from '@/types';
-import { mockReceipts, mockLedgerAccounts } from '@/lib/mockData';
-import { format, startOfDay, endOfDay, isValid } from 'date-fns';
-import { Download } from 'lucide-react';
+import { format, startOfDay, endOfDay, isValid, parseISO } from 'date-fns';
+import { Download, RefreshCw } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 type PaymentFilterType = 'All' | 'Cash' | 'Bank';
 
@@ -22,30 +21,80 @@ export default function ReceiptActivityLogPage() {
   const [fromDate, setFromDate] = useState<Date | undefined>(undefined);
   const [toDate, setToDate] = useState<Date | undefined>(undefined);
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<PaymentFilterType>('All');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const { toast } = useToast();
 
-  useEffect(() => {
-    // Populate ledgerAccountName for receipts if missing (for mock data consistency)
-    const populatedReceipts = mockReceipts.map(receipt => {
-      if (!receipt.ledgerAccountName) {
-        const account = mockLedgerAccounts.find(acc => acc.id === receipt.ledgerAccountId);
-        return { ...receipt, ledgerAccountName: account?.name || 'Unknown Account' };
+  const fetchReceiptsForLog = useCallback(async () => {
+    console.log("[ReceiptLog Fetch] Starting fetch...");
+    setIsLoading(true);
+    try {
+      const response = await fetch('https://sajfoods.net/busa-api/database/get_receipts.php');
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Failed to read error text.");
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
-      return receipt;
-    });
-    setAllReceipts(populatedReceipts);
-  }, []);
+      const data = await response.json();
+      console.log("[ReceiptLog Fetch] Raw API data:", data);
+
+      if (data.success && Array.isArray(data.data)) {
+        const parsedReceipts = data.data.map((r: any) => {
+          let receiptDate = null;
+          let createdAt = null;
+
+          if (r.receiptDate) {
+            const parsed = r.receiptDate.includes(" ") ? parseISO(r.receiptDate.replace(" ", "T")) : parseISO(r.receiptDate);
+            if (isValid(parsed)) receiptDate = parsed;
+            else console.warn(`[ReceiptLog Parse] Invalid receiptDate for ${r.id}:`, r.receiptDate);
+          } else {
+            console.warn(`[ReceiptLog Parse] Missing receiptDate for ${r.id}`);
+          }
+          
+          if (r.createdAt) {
+            const parsed = r.createdAt.includes(" ") ? parseISO(r.createdAt.replace(" ", "T")) : parseISO(r.createdAt);
+            if (isValid(parsed)) createdAt = parsed;
+            else console.warn(`[ReceiptLog Parse] Invalid createdAt for ${r.id}:`, r.createdAt);
+          } else {
+             console.warn(`[ReceiptLog Parse] Missing createdAt for ${r.id}`);
+          }
+
+          return { 
+            ...r, 
+            receiptDate: receiptDate, // Can be null
+            createdAt: createdAt // Can be null
+          };
+        });
+        setAllReceipts(parsedReceipts);
+        console.log("[ReceiptLog Fetch] Parsed receipts count:", parsedReceipts.length);
+      } else {
+        toast({ title: "Error", description: data.message || "Failed to fetch receipts log: Unexpected data format.", variant: "destructive" });
+        setAllReceipts([]);
+      }
+    } catch (error: any) {
+      toast({ title: "Fetch Error", description: `Receipts Log: ${error.message}`, variant: "destructive" });
+      setAllReceipts([]);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [toast]);
+  
+  useEffect(() => {
+    fetchReceiptsForLog();
+  }, [fetchReceiptsForLog]);
 
   useEffect(() => {
+    console.log("[ReceiptLog Filter] Applying filters. Current allReceipts count:", allReceipts.length);
     let receipts = [...allReceipts];
 
     if (fromDate && isValid(fromDate)) {
       const startDate = startOfDay(fromDate);
-      receipts = receipts.filter(r => new Date(r.receiptDate) >= startDate);
+      receipts = receipts.filter(r => r.receiptDate && new Date(r.receiptDate) >= startDate);
     }
 
     if (toDate && isValid(toDate)) {
       const endDate = endOfDay(toDate);
-      receipts = receipts.filter(r => new Date(r.receiptDate) <= endDate);
+      receipts = receipts.filter(r => r.receiptDate && new Date(r.receiptDate) <= endDate);
     }
 
     if (paymentMethodFilter === 'Cash') {
@@ -54,9 +103,21 @@ export default function ReceiptActivityLogPage() {
       const bankPaymentMethods: ReceiptPaymentMethod[] = ['Card', 'Transfer', 'Online', 'Cheque'];
       receipts = receipts.filter(r => bankPaymentMethods.includes(r.paymentMethod));
     }
-
+    
+    receipts.sort((a, b) => {
+        const dateA = a.receiptDate ? new Date(a.receiptDate).getTime() : 0;
+        const dateB = b.receiptDate ? new Date(b.receiptDate).getTime() : 0;
+        return dateB - dateA;
+    });
     setFilteredReceipts(receipts);
+    console.log("[ReceiptLog Filter] Filtered receipts count:", receipts.length);
   }, [allReceipts, fromDate, toDate, paymentMethodFilter]);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchReceiptsForLog(); // fetchReceiptsForLog now sets isLoading to false
+    toast({ title: "Refreshed", description: "Receipt log updated." });
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(amount);
@@ -79,20 +140,34 @@ export default function ReceiptActivityLogPage() {
       .reduce((sum, receipt) => sum + receipt.amountReceived, 0);
   }, [filteredReceipts]);
 
+  const formatDateSafe = (dateInput: Date | null | undefined) => {
+    if (!dateInput || !isValid(new Date(dateInput))) {
+      return "N/A";
+    }
+    return format(new Date(dateInput), 'PP');
+  };
+
+  if (isLoading && !isRefreshing) {
+    return <div className="flex items-center justify-center h-full"><RefreshCw className="h-8 w-8 animate-spin mr-2" /> Loading receipt activity...</div>;
+  }
+
   return (
     <div className="flex flex-col h-full space-y-6">
       <header className="flex items-center justify-between pb-4 border-b">
         <h1 className="text-2xl font-semibold">Receipt Activity Log</h1>
-        <Button variant="outline">
-          <Download className="mr-2 h-4 w-4" />
-          Export Log
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          {/* <Button variant="outline"> <Download className="mr-2 h-4 w-4" /> Export Log </Button> */}
+        </div>
       </header>
 
       <Card>
         <CardHeader>
           <CardTitle>Filters</CardTitle>
-          <CardDescription>Filter receipts by date range and payment method.</CardDescription>
+          <CardDescription>Filter receipts by date range and payment method type.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
@@ -104,7 +179,7 @@ export default function ReceiptActivityLogPage() {
             <DatePickerComponent date={toDate} setDate={setToDate} placeholder="End date" />
           </div>
           <div>
-            <Label htmlFor="paymentMethodFilter">Payment Method</Label>
+            <Label htmlFor="paymentMethodFilter">Payment Type</Label>
             <Select value={paymentMethodFilter} onValueChange={(value: PaymentFilterType) => setPaymentMethodFilter(value)}>
               <SelectTrigger id="paymentMethodFilter">
                 <SelectValue placeholder="Select payment type" />
@@ -121,35 +196,31 @@ export default function ReceiptActivityLogPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Summary</CardTitle>
+          <CardTitle>Summary (Based on Filters)</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
           <div>
-            <p className="text-muted-foreground">Total Receipts (Filtered)</p>
+            <p className="text-muted-foreground">Total Receipts</p>
             <p className="font-semibold text-lg">{filteredReceipts.length}</p>
           </div>
           <div>
-            <p className="text-muted-foreground">Total Amount (Filtered)</p>
+            <p className="text-muted-foreground">Total Amount</p>
             <p className="font-semibold text-lg text-green-600">{formatCurrency(totalAmountFiltered)}</p>
           </div>
-           {paymentMethodFilter === 'All' && (
-            <>
-              <div>
-                <p className="text-muted-foreground">Total Cash Received</p>
-                <p className="font-semibold text-lg">{formatCurrency(totalCashAmount)}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Total Bank Received</p>
-                <p className="font-semibold text-lg">{formatCurrency(totalBankAmount)}</p>
-              </div>
-            </>
-          )}
+          <div>
+            <p className="text-muted-foreground">Total Cash Received</p>
+            <p className="font-semibold text-lg">{formatCurrency(totalCashAmount)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Total Bank Received</p>
+            <p className="font-semibold text-lg">{formatCurrency(totalBankAmount)}</p>
+          </div>
         </CardContent>
       </Card>
 
       <Card className="flex-grow">
         <CardHeader>
-          <CardTitle>Filtered Receipts</CardTitle>
+          <CardTitle>Filtered Receipts Log</CardTitle>
           <CardDescription>Showing {filteredReceipts.length} of {allReceipts.length} total receipts based on active filters.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -170,8 +241,8 @@ export default function ReceiptActivityLogPage() {
                 filteredReceipts.map((receipt) => (
                   <TableRow key={receipt.id}>
                     <TableCell className="font-medium">{receipt.receiptNumber}</TableCell>
-                    <TableCell>{format(new Date(receipt.receiptDate), 'PP')}</TableCell>
-                    <TableCell>{receipt.ledgerAccountName}</TableCell>
+                    <TableCell>{formatDateSafe(receipt.receiptDate)}</TableCell>
+                    <TableCell>{receipt.ledgerAccountName || 'N/A'}</TableCell>
                     <TableCell>{receipt.paymentMethod}</TableCell>
                     <TableCell>{receipt.bankName || '-'}</TableCell>
                     <TableCell>{receipt.referenceNumber || '-'}</TableCell>
@@ -197,4 +268,7 @@ export default function ReceiptActivityLogPage() {
     </div>
   );
 }
+    
+    
 
+    
