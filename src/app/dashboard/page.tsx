@@ -301,9 +301,9 @@ export default function DashboardPage() {
                 <FileTextIconLucide className="mr-2 h-4 w-4" /> New Invoice
               </Button>
             </Link>
-            <Link href="/products/new" passHref>
+            <Link href="/products/stock-management/add" passHref>
               <Button className="w-full">
-                <Package className="mr-2 h-4 w-4" /> Add Product
+                <Package className="mr-2 h-4 w-4" /> Add Stock
               </Button>
             </Link>
             <Link href="/ledger-accounts/new" passHref>
