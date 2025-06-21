@@ -1,0 +1,87 @@
+// API utility functions for sales operations
+
+// Update API configuration to use your specific endpoint
+const API_BASE_URL = "https://sajfoods.net"
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message)
+    this.name = "ApiError"
+  }
+}
+
+// Declare the Sale type
+type Sale = {
+  id: string
+  // other properties of Sale
+}
+
+export async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`
+
+  const config: RequestInit = {
+    headers: {
+      "Content-Type": "application/json",
+      // Add authorization header if needed
+      // 'Authorization': `Bearer ${getToken()}`,
+      ...options.headers,
+    },
+    ...options,
+  }
+
+  try {
+    const response = await fetch(url, config)
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new ApiError(response.status, errorData.message || `HTTP error! status: ${response.status}`)
+    }
+
+    return await response.json()
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error
+    }
+    throw new ApiError(500, "Network error occurred")
+  }
+}
+
+// Update the sales API functions to use your PHP endpoints
+export const salesApi = {
+  // Get all sales
+  getSales: () => apiRequest<{ data: Sale[]; total: number }>("/busa-api/database/get_sales.php"),
+
+  // Get a specific sale
+  getSale: (id: string) => apiRequest<Sale>(`/busa-api/database/get_sale.php?id=${id}`),
+
+  // Create a new sale
+  createSale: (saleData: Omit<Sale, "id">) =>
+    apiRequest<Sale>("/busa-api/database/create_sale.php", {
+      method: "POST",
+      body: JSON.stringify(saleData),
+    }),
+
+  // Update a sale
+  updateSale: (id: string, saleData: Partial<Sale>) =>
+    apiRequest<Sale>("/busa-api/database/update_sale.php", {
+      method: "POST",
+      body: JSON.stringify({ id, ...saleData }),
+    }),
+
+  // Cancel a sale
+  cancelSale: (id: string) =>
+    apiRequest<Sale>("/busa-api/database/cancel_sale.php", {
+      method: "POST",
+      body: JSON.stringify({ sale_id: id }),
+    }),
+
+  // Delete a sale
+  deleteSale: (id: string) =>
+    apiRequest<void>("/busa-api/database/delete_sale.php", {
+      method: "POST",
+      body: JSON.stringify({ sale_id: id }),
+    }),
+}
