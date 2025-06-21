@@ -1,557 +1,357 @@
-"use client"
 
-import type React from "react"
-import { useState, useEffect, useMemo, useCallback } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Search, RefreshCw, BarChart3, CalendarDays, AlertCircle, CalendarIcon } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { format, startOfDay, endOfDay, isValid, parseISO } from "date-fns"
-import { cn } from "@/lib/utils"
+"use client";
 
-// Types
-interface SaleItem {
-  productName: string
-  quantity: number
-  price?: number
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Search, RefreshCw, BarChart3, CalendarDays } from 'lucide-react';
+import type { Sale, CreditNote, SaleItem as CreditNoteSaleItem } from '@/types';
+import { useToast } from '@/hooks/use-toast';
+import { DatePickerComponent } from '@/components/ui/date-picker';
+import { format, startOfDay, endOfDay, isValid, parseISO } from 'date-fns';
+
+interface AggregatedProductSaleData {
+  productName: string;
+  netQuantitySold: number;
 }
 
-interface Sale {
-  id: string
-  saleDate: Date | null
-  items: SaleItem[]
-  customerName?: string
-  totalAmount?: number
-}
-
-interface CreditNoteSaleItem {
-  productName: string
-  quantity: number
-  price?: number
-}
-
-interface CreditNote {
-  id: string
-  creditNoteDate: Date | null
-  reason: string
-  items: CreditNoteSaleItem[]
-  customerName?: string
-  totalAmount?: number
-}
-
-interface ProductData {
-  productName: string
-  description: string
-  netQuantity: number
-}
-
-// Date Picker Component
-interface DatePickerProps {
-  date: Date | undefined
-  setDate: (date: Date | undefined) => void
-  placeholder?: string
-}
-
-function DatePickerComponent({ date, setDate, placeholder = "Pick a date" }: DatePickerProps) {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
-        >
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? format(date, "PPP") : <span>{placeholder}</span>}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-// API Functions
-async function fetchSalesWithProducts() {
-  const BASE = "https://sajfoods.net/busa-api/database/"
-  const PRIMARY = BASE + "get_sales_with_items.php"
-  const FALLBACK = BASE + "get_sales.php"
-
-  async function fetchJson(url: string) {
-    const res = await fetch(url, {
-      cache: "no-store",
-      headers: {
-        "User-Agent": "NetSales/1.0",
-        Accept: "application/json",
-      },
-    })
-    return { ok: res.ok, status: res.status, data: await res.json() }
-  }
-
-  try {
-    let { ok, status, data } = await fetchJson(PRIMARY)
-
-    if (!ok) {
-      console.warn(`Primary endpoint returned ${status}. Falling back…`)
-      ;({ ok, status, data } = await fetchJson(FALLBACK))
-    }
-
-    if (!ok) throw new Error(`Both endpoints failed – status: ${status}`)
-
-    if (!data.success || !Array.isArray(data.data)) {
-      throw new Error("Unexpected API shape from upstream")
-    }
-
-    const processedSales = data.data.map((sale: any) => {
-      const hasItems = Array.isArray(sale.items) && sale.items.length
-      const items = hasItems
-        ? sale.items.map((it: any, i: number) => ({
-            id: it.id ?? i,
-            saleId: sale.id,
-            productId: it.productId ?? it.product_id ?? 0,
-            productName: it.productName ?? it.product_name ?? `Product ${it.productId ?? i}`,
-            quantity: Number(it.quantity) || 0,
-            unitPrice: Number(it.unitPrice ?? it.unit_price ?? it.price) || 0,
-          }))
-        : [
-            {
-              id: 1,
-              saleId: sale.id,
-              productId: 0,
-              productName: `Sale to ${sale.customer?.name ?? "Customer " + sale.id}`,
-              quantity: 1,
-              unitPrice: Number(sale.totalAmount) || 0,
-            },
-          ]
-
-      return {
-        id: sale.id,
-        saleDate: sale.saleDate,
-        customer: sale.customer ?? {},
-        status: sale.status,
-        totalAmount: Number(sale.totalAmount) || 0,
-        paymentMethod: sale.paymentMethod,
-        items: items,
-      }
-    })
-
-    return {
-      success: true,
-      data: processedSales,
-    }
-  } catch (err: any) {
-    console.error("Sales API Error:", err)
-    return { success: false, message: err.message }
-  }
-}
-
-async function fetchCreditNotes() {
-  try {
-    const response = await fetch("https://sajfoods.net/busa-api/database/get_credit_notes.php", {
-      cache: "no-store",
-      headers: {
-        "User-Agent": "NetSales/1.0",
-        Accept: "application/json",
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`Credit Notes API error: ${response.status}`)
-    }
-
-    const data = await response.json()
-    return data
-  } catch (error: any) {
-    console.error("Credit Notes API Error:", error)
-    return { success: false, message: error.message }
-  }
-}
-
-// Main Component
 export default function NetSalesReportPage() {
-  const [allSales, setAllSales] = useState<Sale[]>([])
-  const [allCreditNotes, setAllCreditNotes] = useState<CreditNote[]>([])
+  const [allSales, setAllSales] = useState<Sale[]>([]);
+  const [allCreditNotes, setAllCreditNotes] = useState<CreditNote[]>([]);
+  
+  const [isLoadingSales, setIsLoadingSales] = useState(true);
+  const [isLoadingCreditNotes, setIsLoadingCreditNotes] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const [isLoadingSales, setIsLoadingSales] = useState(true)
-  const [isLoadingCreditNotes, setIsLoadingCreditNotes] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('');
+  const [fromDate, setFromDate] = useState<Date | undefined>(undefined);
+  const [toDate, setToDate] = useState<Date | undefined>(undefined);
+  const { toast } = useToast();
 
-  const [searchTerm, setSearchTerm] = useState("")
-  const [fromDate, setFromDate] = useState<Date | undefined>(undefined)
-  const [toDate, setToDate] = useState<Date | undefined>(undefined)
-  const { toast } = useToast()
+  const parseApiDateString = useCallback((dateInput: string | Date | undefined | null, fieldNameForLog: string = "date"): Date | null => {
+    if (!dateInput) {
+      // console.warn(`[NetSales Rpt DateParse] Null or undefined date provided for ${fieldNameForLog}.`);
+      return null;
+    }
+    if (dateInput instanceof Date) {
+      return isValid(dateInput) ? dateInput : null;
+    }
+    
+    const dateString = String(dateInput).trim();
+    if (dateString === "0000-00-00 00:00:00" || dateString === "0000-00-00") {
+        // console.warn(`[NetSales Rpt DateParse] Invalid zero-date for ${fieldNameForLog}: "${dateString}". Returning null.`);
+        return null; 
+    }
 
-  const parseApiDateString = useCallback((dateInput: string | Date | undefined | null): Date | null => {
-    if (!dateInput) return null
-    if (dateInput instanceof Date) return isValid(dateInput) ? dateInput : null
+    let parsed = parseISO(dateString.replace(" ", "T"));
+    if (isValid(parsed)) return parsed;
 
-    const dateString = String(dateInput).trim()
-    if (dateString === "0000-00-00 00:00:00" || dateString === "0000-00-00") return null
-
-    let parsed = parseISO(dateString.replace(" ", "T"))
-    if (isValid(parsed)) return parsed
-
-    parsed = parseISO(dateString)
-    if (isValid(parsed)) return parsed
-
-    parsed = new Date(dateString)
-    return isValid(parsed) ? parsed : null
-  }, [])
+    parsed = parseISO(dateString);
+    if (isValid(parsed)) return parsed;
+    
+    // console.warn(`[NetSales Rpt DateParse] Failed to parse ${fieldNameForLog} string: "${dateString}". Returning null.`);
+    return null;
+  }, []);
 
   const fetchData = useCallback(async () => {
-    setIsLoadingSales(true)
-    setIsLoadingCreditNotes(true)
-    setFetchError(null)
-    setIsRefreshing(true)
+    setIsLoadingSales(true);
+    setIsLoadingCreditNotes(true);
+    if (!isRefreshing) setIsRefreshing(true); // Ensure refresh state is true if not already
+    console.log("[NetSales Rpt Fetch] Starting data fetch (Sales & Credit Notes)...");
 
     try {
-      // Fetch sales
-      const salesResult = await fetchSalesWithProducts()
-
+      const [salesRes, creditNotesRes] = await Promise.all([
+        fetch("https://sajfoods.net/busa-api/database/get_sales.php"),
+        fetch("https://sajfoods.net/busa-api/database/get_credit_notes.php")
+      ]);
+      
+      // Process Sales
+      if (!salesRes.ok) {
+        const errorText = await salesRes.text().catch(() => `Sales fetch failed: ${salesRes.statusText}`);
+        throw new Error(`Sales fetch failed: ${salesRes.status} - ${errorText.substring(0,100)}`);
+      }
+      const salesResult = await salesRes.json();
+      // console.log("[NetSales Rpt Fetch] Raw Sales API Response:", JSON.stringify(salesResult, null, 2).substring(0, 500));
       if (salesResult.success && Array.isArray(salesResult.data)) {
-        const parsedSales = salesResult.data.map((s_raw: any) => {
-          const saleDate = parseApiDateString(s_raw.saleDate)
-
-          const items = Array.isArray(s_raw.items)
-            ? s_raw.items.map((item: any) => ({
-                productName: item.productName || `Product ${item.productId}`,
-                quantity: Number(item.quantity) || 0,
-                price: Number(item.unitPrice) || 0,
-              }))
-            : []
-
-          return {
-            id: String(s_raw.id),
-            saleDate,
-            items,
-            customerName: s_raw.customerName,
-          } as Sale
-        })
-
-        setAllSales(parsedSales)
-        setIsLoadingSales(false)
+        const parsedSales = salesResult.data.map((s_raw:any, index: number) => {
+          const s = s_raw as any;
+          const saleDate = parseApiDateString(s.saleDate, `sale.saleDate (ID: ${s.id || `index_${index}`})`);
+          const items = Array.isArray(s.items) 
+            ? s.items.map((si:any) => ({
+                ...si, 
+                quantity: Number(si.quantity || 0), 
+                productName: String(si.productName || '').trim(),
+              })) 
+            : [];
+          return { ...s, id: String(s.id || `sale_${index}`), saleDate, items };
+        });
+        setAllSales(parsedSales);
+        // console.log(`[NetSales Rpt Fetch] Processed ${parsedSales.length} sales. First sale:`, parsedSales[0]);
+      } else {
+        toast({ title: "Error Loading Sales", description: salesResult?.message || "Could not load sales data.", variant: "destructive" });
+        setAllSales([]);
       }
+      setIsLoadingSales(false);
 
-      // Fetch credit notes
-      const creditNotesResult = await fetchCreditNotes()
-
+      // Process Credit Notes
+      if (!creditNotesRes.ok) {
+        const errorText = await creditNotesRes.text().catch(() => `Credit Notes fetch failed: ${creditNotesRes.statusText}`);
+        throw new Error(`Credit Notes fetch failed: ${creditNotesRes.status} - ${errorText.substring(0,100)}`);
+      }
+      const creditNotesResult = await creditNotesRes.json();
+      // console.log("[NetSales Rpt Fetch] Raw Credit Notes API Response:", JSON.stringify(creditNotesResult, null, 2).substring(0,500));
       if (creditNotesResult.success && Array.isArray(creditNotesResult.data)) {
-        const parsedCreditNotes = creditNotesResult.data.map((cn_raw: any) => {
-          const creditNoteDate = parseApiDateString(cn_raw.creditNoteDate)
-
-          let items: CreditNoteSaleItem[] = []
-          if (cn_raw.reason === "Returned Goods") {
-            if (Array.isArray(cn_raw.items) && cn_raw.items.length > 0) {
-              items = cn_raw.items.map((item: any) => ({
-                productName: item.productName || "Returned Product",
-                quantity: Number(item.quantity) || 1,
-                price: Number(item.price) || 0,
-              }))
-            } else {
-              items = [
-                {
-                  productName: `Returned Goods - ${cn_raw.ledgerAccountName}`,
-                  quantity: 1,
-                  price: Number(cn_raw.amount) || 0,
-                },
-              ]
-            }
+        const parsedCreditNotes = creditNotesResult.data.map((cn_raw:any, index: number) => {
+          const cn = cn_raw as any;
+          const creditNoteDate = parseApiDateString(cn.creditNoteDate, `cn.creditNoteDate (ID: ${cn.id || `index_${index}`})`);
+          let items = [];
+          if (Array.isArray(cn.items)) {
+            items = cn.items.map((cni:any) => ({
+                ...cni, 
+                quantity: Number(cni.quantity || 0),
+                productName: String(cni.productName || '').trim(),
+            }));
+          } else if (typeof cn.items === 'string' && cn.items.trim() !== '' && cn.items.trim().toLowerCase() !== 'null' && cn.items.trim() !== "0") {
+            try {
+              const parsedItems = JSON.parse(cn.items);
+              if (Array.isArray(parsedItems)) {
+                items = parsedItems.map((cni:any) => ({
+                    ...cni, 
+                    quantity: Number(cni.quantity || 0),
+                    productName: String(cni.productName || '').trim(),
+                }));
+              }
+            } catch (e) { /* console.warn(`[NetSales Rpt Fetch] Failed to parse items string for CN ${cn.id || index}:`, e); */ }
           }
+          return { ...cn, id: String(cn.id || `cn_${index}`), creditNoteDate, items };
+        });
+        setAllCreditNotes(parsedCreditNotes);
+        // console.log(`[NetSales Rpt Fetch] Processed ${parsedCreditNotes.length} credit notes. First CN:`, parsedCreditNotes[0]);
+      } else {
+        toast({ title: "Error Loading Credit Notes", description: creditNotesResult?.message || "Could not load credit notes.", variant: "destructive" });
+        setAllCreditNotes([]);
+      }
+      setIsLoadingCreditNotes(false);
 
-          return {
-            id: String(cn_raw.id),
-            creditNoteDate,
-            items,
-            reason: cn_raw.reason,
-          } as CreditNote
-        })
+    } catch (error: any) {
+      console.error("[NetSales Rpt Fetch] Overall fetch error:", error);
+      toast({ title: 'Error Fetching Report Data', description: error.message, variant: 'destructive' });
+      setAllSales([]); setAllCreditNotes([]);
+      setIsLoadingSales(false); setIsLoadingCreditNotes(false);
+    } finally {
+      setIsRefreshing(false);
+      // console.log("[NetSales Rpt Fetch] Data fetch attempt completed.");
+    }
+  }, [toast, parseApiDateString, isRefreshing]); // Added isRefreshing to deps
+  
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]); // Removed fetchData from deps to prevent re-fetch on every render, call it manually or on specific event
 
-        setAllCreditNotes(parsedCreditNotes)
-        setIsLoadingCreditNotes(false)
+  const isOverallLoading = isLoadingSales || isLoadingCreditNotes;
+
+  const aggregatedReportData: AggregatedProductSaleData[] = useMemo(() => {
+    // console.log(`[NetSales Rpt Agg] Recalculating. Sales: ${allSales.length}, CN: ${allCreditNotes.length}. From: ${fromDate}, To: ${toDate}, Search: "${searchTerm}"`);
+    
+    if (isOverallLoading && allSales.length === 0 && allCreditNotes.length === 0 && !isRefreshing) {
+        // console.log("[NetSales Rpt Agg] Still loading initial data, returning empty array.");
+        return [];
+    }
+
+    const productQuantities = new Map<string, number>();
+
+    allSales.forEach(sale => {
+      const saleDate = sale.saleDate; 
+      if (!saleDate || !isValid(saleDate)) {
+        // console.warn(`[NetSales Rpt Agg] Skipping Sale ID ${sale.id} due to invalid/null date:`, saleDate);
+        return;
       }
 
-      toast({
-        title: "Data Loaded",
-        description: `Loaded ${salesResult.data?.length || 0} sales and ${creditNotesResult.data?.length || 0} credit notes`,
-      })
-    } catch (error: any) {
-      console.error("Fetch error:", error)
-      setFetchError(error.message)
-      setIsLoadingSales(false)
-      setIsLoadingCreditNotes(false)
-      toast({
-        title: "Error Loading Data",
-        description: error.message,
-        variant: "destructive",
-      })
-    } finally {
-      setIsRefreshing(false)
-    }
-  }, [toast, parseApiDateString])
-
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
-
-  const isOverallLoading = isLoadingSales || isLoadingCreditNotes
-
-  // Calculate net quantities by product
-  const productData: ProductData[] = useMemo(() => {
-    if (allSales.length === 0 && allCreditNotes.length === 0) {
-      return []
-    }
-
-    const productMap = new Map<string, { quantity: number; transactions: number }>()
-
-    // Add sales quantities
-    allSales.forEach((sale) => {
-      const saleDate = sale.saleDate
-      if (!saleDate || !isValid(saleDate)) return
-
-      const isAfterFromDate = !fromDate || saleDate >= startOfDay(fromDate)
-      const isBeforeToDate = !toDate || saleDate <= endOfDay(toDate)
+      const isAfterFromDate = !fromDate || saleDate >= startOfDay(fromDate);
+      const isBeforeToDate = !toDate || saleDate <= endOfDay(toDate);
 
       if (isAfterFromDate && isBeforeToDate && Array.isArray(sale.items)) {
-        sale.items.forEach((item) => {
-          if (item.productName && item.productName.trim() !== "") {
-            const existing = productMap.get(item.productName) || { quantity: 0, transactions: 0 }
-            existing.quantity += Number(item.quantity) || 0
-            existing.transactions += 1
-            productMap.set(item.productName, existing)
+        // console.log(`[NetSales Rpt Agg] Processing Sale ID: ${sale.id}, Date: ${sale.saleDate}, Items Count: ${sale.items.length}`);
+        sale.items.forEach((item, itemIndex) => {
+          if (item.productName && item.productName.trim() !== '') {
+            // console.log(`  [NetSales Rpt Agg] Sale Item ${itemIndex}: ${item.productName}, Qty: ${item.quantity}`);
+            const currentQty = productQuantities.get(item.productName) || 0;
+            productQuantities.set(item.productName, currentQty + (Number(item.quantity) || 0));
+          } else {
+            // console.warn(`  [NetSales Rpt Agg] Sale Item ${itemIndex} for Sale ID ${sale.id} has missing/invalid productName:`, item);
           }
-        })
+        });
       }
-    })
+    });
 
-    // Subtract credit note quantities
-    allCreditNotes.forEach((cn) => {
-      if (cn.reason !== "Returned Goods" || !Array.isArray(cn.items)) return
+    allCreditNotes.forEach(cn => {
+      if (cn.reason !== 'Returned Goods' || !Array.isArray(cn.items) || cn.items.length === 0) return;
 
-      const cnDate = cn.creditNoteDate
-      if (!cnDate || !isValid(cnDate)) return
+      const cnDate = cn.creditNoteDate;
+      if (!cnDate || !isValid(cnDate)) {
+        // console.warn(`[NetSales Rpt Agg] Skipping CN ID ${cn.id} due to invalid/null date:`, cnDate);
+        return;
+      }
 
-      const isAfterFromDate = !fromDate || cnDate >= startOfDay(fromDate)
-      const isBeforeToDate = !toDate || cnDate <= endOfDay(toDate)
+      const isAfterFromDateCN = !fromDate || cnDate >= startOfDay(fromDate);
+      const isBeforeToDateCN = !toDate || cnDate <= endOfDay(toDate);
 
-      if (isAfterFromDate && isBeforeToDate) {
-        cn.items.forEach((item) => {
-          if (item.productName && item.productName.trim() !== "") {
-            const existing = productMap.get(item.productName) || { quantity: 0, transactions: 0 }
-            existing.quantity -= Number(item.quantity) || 0
-            productMap.set(item.productName, existing)
+      if (isAfterFromDateCN && isBeforeToDateCN) {
+        // console.log(`[NetSales Rpt Agg] Processing CN ID: ${cn.id}, Date: ${cn.creditNoteDate}, Items Count: ${cn.items.length}`);
+        cn.items.forEach((item: CreditNoteSaleItem, itemIndex) => { 
+          if (item.productName && item.productName.trim() !== '') {
+            // console.log(`  [NetSales Rpt Agg] CN Item ${itemIndex}: ${item.productName}, Qty Returned: ${item.quantity}`);
+            const currentQty = productQuantities.get(item.productName) || 0;
+            productQuantities.set(item.productName, currentQty - (Number(item.quantity) || 0));
+          } else {
+            // console.warn(`  [NetSales Rpt Agg] CN Item ${itemIndex} for CN ID ${cn.id} has missing/invalid productName:`, item);
           }
-        })
+        });
       }
-    })
-
-    // Convert to array with descriptions
-    let result = Array.from(productMap.entries()).map(([productName, data]) => ({
+    });
+    
+    let aggregatedArray = Array.from(productQuantities, ([productName, netQuantitySold]) => ({
       productName,
-      description: `${data.transactions} transaction${data.transactions !== 1 ? "s" : ""}`,
-      netQuantity: data.quantity,
-    }))
+      netQuantitySold
+    }));
 
-    // Apply search filter
     if (searchTerm) {
-      result = result.filter(
-        (p) =>
-          p.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          p.description.toLowerCase().includes(searchTerm.toLowerCase()),
-      )
+        aggregatedArray = aggregatedArray.filter(p => 
+            p.productName.toLowerCase().includes(searchTerm.toLowerCase())
+        );
     }
+    
+    aggregatedArray.sort((a, b) => a.productName.localeCompare(b.productName));
 
-    // Sort by net quantity (highest first)
-    result.sort((a, b) => b.netQuantity - a.netQuantity)
+    // console.log(`[NetSales Rpt Agg] Aggregated data points: ${aggregatedArray.length}. First few:`, aggregatedArray.slice(0,3));
+    return aggregatedArray;
 
-    return result
-  }, [allSales, allCreditNotes, fromDate, toDate, searchTerm])
+  }, [allSales, allCreditNotes, fromDate, toDate, searchTerm, isOverallLoading, isRefreshing, parseApiDateString]);
+
 
   const handleRefresh = () => {
-    if (!isRefreshing) {
-      fetchData()
+    if (!isRefreshing) { // Prevent multiple refreshes if one is already in progress
+        setIsRefreshing(true); // Set refreshing state before calling fetchData
+        fetchData(); 
+        toast({title: "Refreshed", description: "Net sales report data updated."});
     }
-  }
+  };
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(event.target.value)
-  }
+    setSearchTerm(event.target.value);
+  };
+  
+  const overallTotalNetQuantitySold = useMemo(() => 
+    aggregatedReportData.reduce((sum, p) => sum + p.netQuantitySold, 0),
+  [aggregatedReportData]);
 
-  const totalNetQuantity = useMemo(() => productData.reduce((sum, p) => sum + p.netQuantity, 0), [productData])
 
-  const clearDateFilters = () => {
-    setFromDate(undefined)
-    setToDate(undefined)
-  }
-
-  if (isOverallLoading && allSales.length === 0 && allCreditNotes.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4" />
-          <p>Loading product data...</p>
-        </div>
-      </div>
-    )
+  if (isOverallLoading && allSales.length === 0 && allCreditNotes.length === 0 && !isRefreshing) {
+    return <div className="flex items-center justify-center h-full"><RefreshCw className="h-8 w-8 animate-spin mr-2"/>Loading report data...</div>;
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="flex flex-col h-full space-y-6">
       <header className="flex items-center justify-between pb-4 border-b">
-        <h1 className="text-3xl font-bold flex items-center">
-          <BarChart3 className="mr-3 h-8 w-8" /> Net Product Quantities
+        <h1 className="text-2xl font-semibold flex items-center">
+          <BarChart3 className="mr-3 h-6 w-6" /> Net Sales Quantity Report
         </h1>
-        <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
+        <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing || isOverallLoading}>
           <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-          Refresh
+          Refresh Data
         </Button>
       </header>
 
-      {fetchError && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>Error: {fetchError}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Date Filter */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CalendarDays className="h-5 w-5" />
-            Date Range Filter
-          </CardTitle>
+          <CardTitle className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-muted-foreground"/> Date Range Filter</CardTitle>
+          <CardDescription>Select a date range to view net sales quantity within that period.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium block mb-2">From Date</label>
-              <DatePickerComponent date={fromDate} setDate={setFromDate} placeholder="Start date" />
-            </div>
-            <div>
-              <label className="text-sm font-medium block mb-2">To Date</label>
-              <DatePickerComponent date={toDate} setDate={setToDate} placeholder="End date" />
-            </div>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="fromDate" className="text-sm font-medium block mb-1">From Date</label>
+            <DatePickerComponent date={fromDate} setDate={setFromDate} placeholder="Start date" />
           </div>
-          {(fromDate || toDate) && (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={clearDateFilters}>
-                Clear Filters
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                {fromDate && `From: ${format(fromDate, "MMM dd, yyyy")}`}
-                {fromDate && toDate && " • "}
-                {toDate && `To: ${format(toDate, "MMM dd, yyyy")}`}
-              </span>
-            </div>
-          )}
+          <div>
+            <label htmlFor="toDate" className="text-sm font-medium block mb-1">To Date</label>
+            <DatePickerComponent date={toDate} setDate={setToDate} placeholder="End date" />
+          </div>
         </CardContent>
       </Card>
 
-      {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Total Net Quantity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {isOverallLoading ? (
-                <RefreshCw className="h-6 w-6 animate-spin inline" />
-              ) : (
-                totalNetQuantity.toLocaleString()
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Unique Products</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {isOverallLoading ? (
-                <RefreshCw className="h-6 w-6 animate-spin inline" />
-              ) : (
-                productData.length.toLocaleString()
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Products Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Product Net Quantities</CardTitle>
-          <CardDescription>Net quantity sold (Sales - Returns) for each product</CardDescription>
-          <div className="relative mt-4">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <CardTitle>Summary for Selected Period</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-muted/50 p-4 rounded-lg">
+                <p className="text-sm text-muted-foreground">Total Net Quantity Sold (All Products)</p>
+                <p className="text-2xl font-bold">{(isOverallLoading && aggregatedReportData.length === 0) ? <RefreshCw className="h-5 w-5 animate-spin inline" /> : overallTotalNetQuantitySold.toLocaleString()}</p>
+            </div>
+             <div className="bg-muted/50 p-4 rounded-lg">
+                <p className="text-sm text-muted-foreground">Unique Products Sold (Net)</p>
+                <p className="text-2xl font-bold">{(isOverallLoading && aggregatedReportData.length === 0) ? <RefreshCw className="h-5 w-5 animate-spin inline" /> : aggregatedReportData.length.toLocaleString()}</p>
+            </div>
+        </CardContent>
+      </Card>
+
+      <Card className="flex-grow">
+        <CardHeader>
+          <CardTitle>Product Sales Performance (Net Quantity)</CardTitle>
+          <CardDescription>
+            Net quantity sold (Sales - Returns) for each product name in the selected period.
+          </CardDescription>
+          <div className="relative mt-2">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Search products..."
-              className="pl-10 max-w-sm"
+              placeholder="Search products by name..."
+              className="pl-8 w-full md:w-1/2 lg:w-1/3"
               value={searchTerm}
               onChange={handleSearchChange}
             />
           </div>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product Name</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-right">Net Quantity</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isRefreshing ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="h-24 text-center">
-                      <RefreshCw className="h-6 w-6 animate-spin inline mr-2" />
-                      Refreshing...
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product Name</TableHead>
+                <TableHead className="text-right">Net Qty Sold</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isRefreshing ? (
+                 <TableRow><TableCell colSpan={2} className="h-24 text-center"><RefreshCw className="h-6 w-6 animate-spin inline mr-2"/>Refreshing data...</TableCell></TableRow>
+              ) : isOverallLoading && aggregatedReportData.length === 0 ? (
+                 <TableRow><TableCell colSpan={2} className="h-24 text-center"><RefreshCw className="h-6 w-6 animate-spin inline mr-2"/>Aggregating data...</TableCell></TableRow>
+              ) : !isOverallLoading && aggregatedReportData.length === 0 && (allSales.length > 0 || allCreditNotes.length > 0) ? (
+                 <TableRow><TableCell colSpan={2} className="h-24 text-center">No sales data found for any products matching the current filters.</TableCell></TableRow>
+              ) : !isOverallLoading && allSales.length === 0 && allCreditNotes.length === 0 ? (
+                 <TableRow><TableCell colSpan={2} className="h-24 text-center">No sales or credit note data loaded. Check connection or API.</TableCell></TableRow>
+              ) : aggregatedReportData.map((productData) => {
+                return (
+                  <TableRow key={productData.productName}>
+                    <TableCell className="font-medium">{productData.productName}</TableCell>
+                    <TableCell className="text-right font-semibold">
+                        {productData.netQuantitySold.toLocaleString()}
                     </TableCell>
                   </TableRow>
-                ) : isOverallLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="h-24 text-center">
-                      <RefreshCw className="h-6 w-6 animate-spin inline mr-2" />
-                      Loading...
-                    </TableCell>
-                  </TableRow>
-                ) : productData.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
-                      No products found
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  productData.map((product) => (
-                    <TableRow key={product.productName}>
-                      <TableCell className="font-medium">{product.productName}</TableCell>
-                      <TableCell className="text-muted-foreground">{product.description}</TableCell>
-                      <TableCell className="text-right font-semibold">{product.netQuantity.toLocaleString()}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                );
+              })}
+            </TableBody>
+          </Table>
         </CardContent>
         <CardFooter>
-          <div className="text-sm text-muted-foreground">
-            Showing <strong>{productData.length}</strong> products
+          <div className="text-xs text-muted-foreground">
+            Showing <strong>{aggregatedReportData.length}</strong> unique product names based on current filters.
           </div>
         </CardFooter>
       </Card>
     </div>
-  )
+  );
 }
+
+    
