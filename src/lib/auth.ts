@@ -1,4 +1,4 @@
- // src/lib/auth.ts
+// src/lib/auth.ts
 import { mockUsers, type User, type UserRole } from './users';
 
 const USER_ROLE_KEY = 'currentUserRole';
