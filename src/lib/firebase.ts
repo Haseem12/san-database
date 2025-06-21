@@ -19,6 +19,9 @@ let auth: Auth;
 let db: Firestore;
 let storage: FirebaseStorage;
 
+// Commenting out Firebase initialization to prevent 'invalid-api-key' errors.
+// The application has transitioned to using a PHP backend.
+/*
 if (getApps().length === 0) {
   app = initializeApp(firebaseConfig);
 } else {
@@ -28,5 +31,7 @@ if (getApps().length === 0) {
 auth = getAuth(app);
 db = getFirestore(app);
 storage = getStorage(app);
+*/
 
+// @ts-ignore
 export { app, auth, db, storage };
